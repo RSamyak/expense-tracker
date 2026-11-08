@@ -1,0 +1,5 @@
+dump/
+.cursor/
+
+
+*.DS_Store*

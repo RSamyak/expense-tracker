@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Expenses">
+<meta name="theme-color" content="#fffdf6">
+<title>Expenses</title>
+<style>
+:root {
+  --paper: #fffdf6; --ink: #2b2b2b; --grey: #6b6b6b; --faint: #b3ad9e; --line: #e6e2d6; --soft: #f4f1e8;
+  --navy: #17375e; --red: #c5221f; --green: #22773b; --amber: #9a6700;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1, h2, p { margin: 0; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+
+header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left)); background: #fff; border-bottom: 3px solid var(--navy); }
+.dirty { flex-basis: 100%; margin: 0; color: var(--red); font-size: 14px; font-weight: 700; }
+header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+#trips { min-width: 0; max-width: 48vw; font-weight: 800; border-color: transparent; padding-left: 0; }
+.actions { margin-left: auto; display: flex; gap: 8px; align-items: center; min-width: 0; }
+.status { border: 0; background: none; padding: 4px 0; font-size: 13px; font-weight: 700; color: var(--grey); white-space: nowrap; }
+.status.good { color: var(--green); }
+.status.wait { color: var(--amber); }
+.status.bad { color: var(--red); }
+#lock { font-size: 13px; font-weight: 800; color: var(--amber); }
+.btn:disabled { opacity: .45; cursor: default; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 640px; margin: 0 auto; padding: 14px calc(16px + env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); }
+
+nav { position: fixed; z-index: 5; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1px solid var(--line); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+nav a { padding: 14px 0 12px; text-align: center; font-size: 14px; font-weight: 700; color: var(--grey); text-decoration: none; border-top: 3px solid transparent; }
+nav a[aria-current="page"] { color: var(--navy); border-top-color: var(--navy); }
+
+.card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.card h2 { font-size: 12px; font-weight: 700; color: var(--grey); text-transform: uppercase; letter-spacing: .05em; }
+.field { display: grid; gap: 4px; font-size: 13px; color: var(--grey); font-weight: 600; }
+.field > input, .field > select { color: var(--ink); font-weight: 400; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > .grow { flex: 1; min-width: 0; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.list { display: grid; gap: 6px; }
+.empty { color: var(--faint); font-size: 14px; }
+
+input, select { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: #fff; }
+input:focus, select:focus { border-color: var(--navy); outline: 0; }
+input:disabled { background: var(--soft); }
+input[type="date"] { min-width: 0; width: 100%; }
+select { min-width: 0; max-width: 100%; }
+input.amount { flex: 1; width: 0; min-width: 0; max-width: 9em; text-align: right; font-variant-numeric: tabular-nums; }
+input.amount.big { max-width: none; font-size: 26px; font-weight: 700; padding: 4px 10px; }
+.code { font-weight: 700; min-width: 3.2em; }
+.btn { min-height: 40px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-weight: 600; }
+.btn:hover { background: var(--soft); }
+.btn.primary { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 700; }
+.btn.danger { color: var(--red); }
+.btn.wide { width: 100%; min-height: 48px; font-size: 17px; }
+.btn.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--navy); font-size: 14px; justify-self: start; }
+.btn.x { min-width: 40px; padding: 0; color: var(--grey); font-size: 20px; line-height: 1; border-color: transparent; background: transparent; }
+.btn.x:hover { color: var(--red); background: var(--soft); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 14px; font-weight: 600; }
+.chip .btn.x { min-width: 30px; min-height: 30px; font-size: 17px; }
+button.chip { padding: 6px 14px; min-height: 36px; }
+button.chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+.seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--soft); }
+.seg button { flex: 1; min-width: 0; min-height: 38px; padding: 4px 2px; border: 0; background: none; font-size: 14px; font-weight: 700; color: var(--grey); }
+.seg button.on { background: var(--navy); color: #fff; }
+.seg button:disabled:not(.on) { opacity: .45; }
+
+.preview { font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; }
+.preview:empty { display: none; }
+.preview .problem { color: var(--red); font-weight: 600; }
+.preview b { font-variant-numeric: tabular-nums; }
+.tally { font-size: 14px; font-weight: 600; color: var(--grey); font-variant-numeric: tabular-nums; }
+.tally:empty { display: none; }
+.tally.off { color: var(--red); }
+
+.state { font-size: 14px; display: grid; gap: 4px; }
+.state.ok { color: var(--green); font-weight: 700; }
+.state li { color: var(--red); }
+.state ul { margin: 0; padding-left: 18px; }
+.hint { font-size: 13px; color: var(--grey); }
+.error { color: var(--red); font-size: 14px; }
+.welcome { text-align: center; padding: 32px 16px 8px; display: grid; gap: 14px; justify-items: center; }
+.welcome p { color: var(--grey); }
+
+.day { font-size: 12px; font-weight: 700; color: var(--grey); text-transform: uppercase; letter-spacing: .05em; padding: 8px 4px 0; }
+.entries { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; text-align: left; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); border-left: 4px solid var(--kind, transparent); background: color-mix(in srgb, var(--kind, transparent) 14%, #fff); }
+.entry:first-child { border-top: 0; }
+.k-expense { --kind: var(--navy); }
+.k-transfer { --kind: var(--green); }
+.k-exchange { --kind: var(--amber); }
+.k-cash { --kind: #8a8476; }
+button.chip[class*="k-"]::before { content: ""; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--kind); box-shadow: 0 0 0 1.5px #fff; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+fieldset.reading { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.reading input, .reading select { opacity: 1; -webkit-text-fill-color: currentColor; }
+.reading .btn.x, .reading .btn.link { display: none; }
+button.entry:hover { background: color-mix(in srgb, var(--kind, transparent) 24%, #fff); }
+.entry .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry .sum { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.entry .detail { font-size: 13px; color: var(--grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry .tag { font-size: 12px; color: var(--faint); text-align: right; }
+.entry .problem { grid-column: 1 / -1; font-size: 13px; color: var(--red); }
+
+.figure { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.figure b { font-variant-numeric: tabular-nums; }
+.gets { color: var(--green); }
+.owes { color: var(--red); }
+.square { color: var(--grey); }
+.stack { display: grid; justify-items: end; gap: 2px; }
+.figure.total { font-size: 18px; font-weight: 700; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.settle { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 15px; font-variant-numeric: tabular-nums; }
+.bar { display: grid; gap: 4px; font-size: 15px; }
+button.bar { width: 100%; padding: 4px 6px; border: 0; border-radius: 8px; background: none; text-align: inherit; }
+button.bar:hover { background: var(--soft); }
+.bar .hint { text-align: right; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.track { height: 6px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.track > div { height: 100%; border-radius: 3px; background: var(--navy); }
+.history { margin: 0; padding-left: 18px; font-size: 13px; color: var(--grey); }
+
+#toast { position: fixed; z-index: 10; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); }
+
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(440px, calc(100% - 24px)); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); background: #fff; color: var(--ink); }
+dialog::backdrop { background: rgba(43, 43, 43, .45); }
+dialog form { padding: 20px; display: grid; gap: 14px; }
+dialog h2 { font-size: 18px; font-weight: 800; }
+dialog .error { min-height: 1.4em; }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Expenses</h1>
+  <select id="trips" aria-label="Trip"></select>
+  <span id="lock" hidden>Locked</span>
+  <div class="actions">
+    <button id="status" type="button" class="status"></button>
+    <button id="save" type="button" class="btn primary" hidden>Save</button>
+  </div>
+  <p id="dirty" class="dirty" hidden>Unsaved changes</p>
+</header>
+<main id="main"></main>
+<nav>
+  <a href="#add">Add</a>
+  <a href="#book">Book</a>
+  <a href="#balances">Balances</a>
+  <a href="#settings">Settings</a>
+</nav>
+<p id="toast" role="status" hidden></p>
+<datalist id="descriptions"></datalist>
+<datalist id="vias"></datalist>
+
+<dialog id="create">
+  <form method="dialog">
+    <h2>New trip</h2>
+    <label class="field">Name <input name="name" required autocomplete="off" placeholder="Thailand"></label>
+    <label class="field">Folder <input name="slug" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="2026-thailand"></label>
+    <label class="field">Base currency <select name="base"></select></label>
+    <p class="error" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="create">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+import { CASH, SCHEMA_VERSION, current, decimal, decimals, preview, report, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { createStore, isSlug, newId } from "./store.js";
+import { createRemote, RemoteError } from "./github.js";
+import { allowFolder, canPickFolder, createFolder, forgetFolder, pickFolder, savedFolder } from "./folder.js";
+import { sync } from "./sync.js";
+
+const CATEGORIES = ["Flights", "Stay", "Docs", "Activities", "Food", "Travel", "Purchases", "Big"];
+const CODES = Intl.supportedValuesOf("currency");
+const currencyName = new Intl.DisplayNames(["en"], { type: "currency" });
+const TABS = ["add", "book", "balances", "settings"];
+const NEW = "\u0000new";
+const SEVERAL = "\u0000several";
+const $ = (selector) => document.querySelector(selector);
+
+const store = createStore(localStorage);
+takeLink(location.hash);
+
+const pick = (wanted) => (store.slugs().includes(wanted) ? wanted : store.slugs()[0] ?? null);
+let slug = pick(store.opened());
+let draft = slug ? store.trip(slug) : null;
+let T = null;
+let E = [];
+const saved = () => !slug || JSON.stringify(draft) === JSON.stringify(store.trip(slug));
+const tab = () => (TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "add");
+const me = () => store.prefs(slug).me;
+
+// ---- Link ----------------------------------------------------------------
+
+// A trip link carries the repo and its token after `#`, so it never reaches a server.
+function parseLink(text) {
+  const params = new URLSearchParams(String(text).split("#")[1] ?? "");
+  const repo = params.get("repo");
+  const token = params.get("token");
+  return repo && token ? { repo, token, who: params.get("who") ?? "", trip: params.get("trip") } : null;
+}
+
+function takeLink(hash) {
+  const link = parseLink(hash);
+  if (!link) return;
+  store.setLink({ repo: link.repo, token: link.token, ...(link.who && { who: link.who }) });
+  if (link.trip) store.open(link.trip);
+  history.replaceState(null, "", `${location.pathname}${location.search}#add`);
+}
+
+const shareUrl = () => {
+  const { repo, token, who } = store.link();
+  return `${location.origin}${location.pathname}#${new URLSearchParams({ repo, token, ...(who && { who }), ...(slug && { trip: slug }) })}`;
+};
+
+// ---- DOM -----------------------------------------------------------------
+
+function h(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (key in node && key !== "list") node[key] = value;
+    else node.setAttribute(key, value);
+  }
+  node.append(...children.flat(Infinity).filter((child) => child != null && child !== false));
+  return node;
+}
+
+const card = (title, ...children) => h("section", { className: "card" }, title && h("h2", {}, title), ...children);
+const field = (label, ...controls) => h("label", { className: "field" }, label, ...controls);
+const text = (value, oninput, props = {}) => h("input", { value, autocomplete: "off", oninput: (e) => oninput(e.target.value), ...props });
+const amount = (value, oninput, props = {}) => text(value, oninput, { inputMode: "decimal", placeholder: "0", ...props, className: `amount ${props.className ?? ""}` });
+const choose = (options, value, onchange, props = {}) =>
+  h("select", { onchange: (e) => onchange(e.target.value), ...props }, options.map(([v, label]) => h("option", { value: v, selected: v === value }, label)));
+const seg = (options, value, onpick, disabled = false) =>
+  h("div", { className: "seg", role: "group" }, options.map(([v, label]) =>
+    h("button", { type: "button", className: v === value ? "on" : "", disabled, onclick: () => onpick(v) }, label)));
+const chip = (label, on, onclick) => h("button", { type: "button", className: `chip${on ? " on" : ""}`, onclick }, label);
+const remove = (label, onclick, disabled = false) =>
+  h("button", { type: "button", className: "btn x", ariaLabel: `Remove ${label}`, disabled, title: disabled ? "Entries use this" : "", onclick }, "×");
+const button = (label, onclick, className = "") => h("button", { type: "button", className: `btn ${className}`, onclick }, label);
+const currencyOptions = (codes, selected) =>
+  codes.map((code) => h("option", { value: code, selected: code === selected }, `${code} · ${currencyName.of(code)}`));
+
+// An input and an Add button that submit on Enter.
+function adder(placeholder, onadd, extra = {}) {
+  const input = h("input", { className: "grow", placeholder, autocomplete: "off", ...extra });
+  const add = () => {
+    const value = input.value.trim();
+    if (value) onadd(value);
+  };
+  input.addEventListener("keydown", (event) => event.key === "Enter" && (event.preventDefault(), add()));
+  return h("div", { className: "row" }, input, button("Add", add));
+}
+
+let toastTimer;
+function toast(message) {
+  const node = $("#toast");
+  node.textContent = message;
+  node.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (node.hidden = true), 3000);
+}
+
+// ---- Words ---------------------------------------------------------------
+
+const formats = new Map();
+function money(value, currency) {
+  if (!formats.has(currency)) formats.set(currency, new Intl.NumberFormat("en-IN", { style: "currency", currency, currencyDisplay: "narrowSymbol" }));
+  return formats.get(currency).format(Number(value));
+}
+const day = (date) => new Date(`${date}T00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const when = (at) => new Date(at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const today = () => new Date().toLocaleDateString("en-CA");
+const nameOf = (id) => T?.members.find((m) => m.id === id)?.name ?? id;
+const names = (map) => Object.keys(map ?? {}).map(nameOf).join(", ");
+const codes = () => [T.base, ...Object.keys(T.currencies)];
+
+// What a Book row says about an entry.
+function describe(entry) {
+  switch (entry.kind) {
+    case "expense":
+      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category].filter(Boolean).join(" · "), sum: money(total(entry.paid, entry.currency) ?? 0, entry.currency) };
+    case "transfer":
+      return { title: entry.description || "Transfer", detail: `${names(entry.from)} → ${names(entry.to)}`, sum: money(total(entry.from, entry.currency) ?? 0, entry.currency) };
+    case "exchange": {
+      const side = ({ currency, by }) => money(total(by, currency) ?? 0, currency);
+      return { title: entry.description || "Exchange", detail: `${names(entry.gave?.by)}: ${side(entry.gave)} → ${side(entry.got)}`, sum: side(entry.got) };
+    }
+    case "cash":
+      return { title: entry.description || "Own cash", detail: `${nameOf(entry.member)} added, not shared`, sum: money(entry.amount, entry.currency) };
+    default:
+      return { title: entry.kind, detail: "", sum: "" };
+  }
+}
+
+// ---- Add -----------------------------------------------------------------
+
+const MODES = [["equal", "Equally"], ["shares", "Shares"], ["percent", "%"], ["exact", "Exact"], ["itemised", "Items"]];
+const KINDS = [["expense", "Expense"], ["transfer", "Transfer"], ["exchange", "Exchange"], ["cash", "Own cash"]];
+let form = null;
+let spender = "";
+let shownIn = "";
+let paidIn = "";
+let dayCategory = "";
+let pristine = true;
+let editing = null;
+
+const clean = (map) => Object.fromEntries(Object.entries(map).filter(([, v]) => String(v).trim()).map(([k, v]) => [k, String(v).trim()]));
+const party = (one) => ({ one, several: false, amounts: {} });
+const paidBy = (p, value) => (p.several ? clean(p.amounts) : { [p.one]: value.trim() });
+const sumOf = (p, value, currency) => (p.several ? total(clean(p.amounts), currency) ?? "" : value);
+
+function blank(kind) {
+  const prefs = store.prefs(slug);
+  const everyone = T.members.map(({ id }) => id);
+  const other = everyone.find((id) => id !== me()) ?? me();
+  const currency = codes().includes(prefs.currency) ? prefs.currency : T.base;
+  const foreign = codes().find((code) => code !== T.base) ?? T.base;
+  const common = { entry: newId(), kind, date: form?.date ?? today(), description: "", note: "" };
+  switch (kind) {
+    case "expense":
+      return {
+        ...common, currency, amount: "", category: "", via: prefs.via ?? "", rate: null, paid: party(me()),
+        split: { mode: "equal", members: everyone, shares: Object.fromEntries(everyone.map((id) => [id, "1"])), percents: {}, amounts: {}, items: [{ amount: "", members: [] }] },
+      };
+    case "transfer":
+      return { ...common, currency, amount: "", via: "", from: party(me()), to: party(other) };
+    case "exchange":
+      return { ...common, gave: { currency: T.base, amount: "", via: "", by: party(me()) }, got: { currency: foreign, amount: "", via: CASH, by: party(me()) } };
+    default:
+      return { ...common, member: me(), currency: foreign, amount: "" };
+  }
+}
+
+// The form, read back from a saved entry.
+function fromEvent(entry) {
+  const f = { ...blank(entry.kind), entry: entry.entry, date: entry.date, description: entry.description ?? "", note: entry.note ?? "" };
+  const back = (map, currency) => {
+    const keys = Object.keys(map ?? {});
+    return keys.length === 1
+      ? [{ one: keys[0], several: false, amounts: {} }, map[keys[0]]]
+      : [{ one: me(), several: true, amounts: { ...map } }, total(map, currency) ?? ""];
+  };
+  switch (entry.kind) {
+    case "expense": {
+      [f.paid, f.amount] = back(entry.paid, entry.currency);
+      Object.assign(f, { currency: entry.currency, category: entry.category ?? "", via: entry.via ?? "", rate: entry.rate ?? null });
+      const s = entry.split ?? { mode: "equal" };
+      f.split.mode = s.mode;
+      if (s.mode === "equal") f.split.members = s.members ?? T.members.map(({ id }) => id);
+      if (s.mode === "shares") f.split.shares = { ...s.shares };
+      if (s.mode === "percent") f.split.percents = { ...s.percents };
+      if (s.mode === "exact") f.split.amounts = { ...s.amounts };
+      if (s.mode === "itemised") f.split.items = s.items.map((item) => ({ amount: String(item.amount), members: [...item.members] }));
+      return f;
+    }
+    case "transfer": {
+      let to;
+      [f.from, f.amount] = back(entry.from, entry.currency);
+      [f.to, to] = back(entry.to, entry.currency);
+      if (!f.from.several && f.to.several) f.amount = to;
+      return Object.assign(f, { currency: entry.currency, via: entry.via ?? "" });
+    }
+    case "exchange":
+      for (const name of ["gave", "got"]) {
+        const part = entry[name];
+        const [by, value] = back(part.by, part.currency);
+        f[name] = { currency: part.currency, via: part.via ?? "", amount: value, by };
+      }
+      return f;
+    default:
+      return Object.assign(f, { member: entry.member, currency: entry.currency, amount: entry.amount });
+  }
+}
+
+// The entry the form describes, without its version stamp.
+function toEvent(f) {
+  const words = { ...(f.description.trim() && { description: f.description.trim() }), ...(f.note.trim() && { note: f.note.trim() }) };
+  const via = (v) => (v.trim() ? { via: v.trim() } : {});
+  const head = { entry: f.entry, kind: f.kind, date: f.date };
+  switch (f.kind) {
+    case "expense": {
+      const s = f.split;
+      const order = (ids) => T.members.map(({ id }) => id).filter((id) => ids.includes(id));
+      const split = {
+        equal: () => ({ mode: "equal", members: order(s.members) }),
+        shares: () => ({ mode: "shares", shares: clean(s.shares) }),
+        percent: () => ({ mode: "percent", percents: clean(s.percents) }),
+        exact: () => ({ mode: "exact", amounts: clean(s.amounts) }),
+        itemised: () => ({ mode: "itemised", items: s.items.map(({ amount: a, members }) => ({ amount: a.trim(), members: order(members) })) }),
+      }[s.mode]();
+      return {
+        ...head, ...words, currency: f.currency, paid: paidBy(f.paid, f.amount), split,
+        ...(f.category && { category: f.category }), ...via(f.via), ...(f.rate && f.currency !== T.base && { rate: f.rate }),
+      };
+    }
+    case "transfer": {
+      const value = transferAmount(f);
+      return { ...head, ...words, currency: f.currency, ...via(f.via), from: paidBy(f.from, value), to: paidBy(f.to, value) };
+    }
+    case "exchange": {
+      const side = (part) => ({ currency: part.currency, ...via(part.via), by: paidBy(part.by, part.amount) });
+      return { ...head, ...words, gave: side(f.gave), got: side(f.got) };
+    }
+    default:
+      return { ...head, ...words, member: f.member, currency: f.currency, amount: f.amount.trim() };
+  }
+}
+
+const transferAmount = (f) => (f.from.several ? sumOf(f.from, "", f.currency) : f.to.several ? sumOf(f.to, "", f.currency) : f.amount);
+
+function check(f) {
+  if (f.kind === "expense" && !f.description.trim()) return { problem: "a description is missing", shares: [] };
+  return preview(T, toEvent(f));
+}
+
+// A structural change redraws the form; typing only repaints what depends on it.
+function change(fn) {
+  fn(form);
+  pristine = false;
+  render();
+}
+
+function typed(fn) {
+  fn(form);
+  pristine = false;
+  paintPreview();
+}
+
+function paintPreview() {
+  const { problem, shares } = check(form);
+  $("#preview")?.replaceChildren(...(problem
+    ? [pristine ? null : h("span", { className: "problem" }, problem)].filter(Boolean)
+    : shares.map(({ member, amount: a }) => h("span", {}, `${nameOf(member)} `, h("b", {}, money(a, form.currency))))));
+  const submit = $("#submit");
+  if (submit) submit.disabled = Boolean(problem);
+  const sums = $("#tally");
+  if (sums) {
+    const [words, off] = tally(form) ?? [""];
+    sums.textContent = words;
+    sums.classList.toggle("off", Boolean(off));
+  }
+  for (const node of document.querySelectorAll("[data-sum]")) node.value = { expense: () => sumOf(form.paid, form.amount, form.currency), transfer: () => transferAmount(form), gave: () => sumOf(form.gave.by, form.gave.amount, form.gave.currency), got: () => sumOf(form.got.by, form.got.amount, form.got.currency) }[node.dataset.sum]();
+}
+
+function paintCategories() {
+  $("#categories")?.replaceWith(categoryChips());
+}
+
+// A description used before brings its category with it.
+function guess(description) {
+  if (form.category) return;
+  const words = description.trim().toLowerCase();
+  const seen = current(E).reverse().find((e) => e.kind === "expense" && e.category && e.description?.toLowerCase() === words);
+  if (seen && T.categories.includes(seen.category)) {
+    form.category = seen.category;
+    paintCategories();
+  }
+}
+
+const currencyPick = (value, onpick) => choose(codes().map((code) => [code, code]), value, onpick, { ariaLabel: "Currency" });
+
+function amountRow(value, sumKey, disabled, oninput, currency, onCurrency, big = true) {
+  return h("div", { className: "row" },
+    amount(value, oninput, { className: big ? "big" : "", disabled, ariaLabel: "Amount", ...(sumKey && { "data-sum": sumKey }) }),
+    currencyPick(currency, onCurrency));
+}
+
+// One person, or an amount from each of several.
+function partyPick(label, p, typedAmount, currency) {
+  const options = [...T.members.map(({ id, name }) => [id, name]), [SEVERAL, "Several people"]];
+  return [
+    field(label, choose(options, p.several ? SEVERAL : p.one, (v) => change(() => {
+      const value = typedAmount().trim();
+      if (v === SEVERAL) Object.assign(p, { several: true, amounts: value ? { [p.one]: value } : {} });
+      else Object.assign(p, { several: false, one: v });
+    }))),
+    p.several && perMember(p.amounts, currency),
+  ];
+}
+
+const perMember = (map, unit) => h("div", { className: "list" }, T.members.map(({ id, name }) =>
+  h("div", { className: "row" },
+    h("span", { className: "grow" }, name),
+    amount(map[id] ?? "", (v) => typed(() => (map[id] = v)), { ariaLabel: `${name}, ${unit}` }),
+    h("span", { className: "code" }, unit))));
+
+const toggles = (selected, onflip) => h("div", { className: "chips" }, T.members.map(({ id, name }) =>
+  h("button", { type: "button", className: `chip${selected.includes(id) ? " on" : ""}`, ariaPressed: String(selected.includes(id)), onclick: () => onflip(id) }, name)));
+
+const flip = (list, id) => (list.includes(id) ? list.splice(list.indexOf(id), 1) : list.push(id));
+
+function splitBody(f) {
+  const s = f.split;
+  switch (s.mode) {
+    case "equal":
+      return [toggles(s.members, (id) => change(() => flip(s.members, id))), h("p", { className: "hint" }, "Tap to leave someone out.")];
+    case "shares":
+      return perMember(s.shares, "shares");
+    case "percent":
+      return perMember(s.percents, "%");
+    case "exact":
+      return perMember(s.amounts, f.currency);
+    default:
+      return [
+        h("div", { className: "list" }, s.items.map((item, i) => h("div", { className: "list" },
+          h("div", { className: "row" },
+            h("span", { className: "grow hint" }, `Item ${i + 1}`),
+            amount(item.amount, (v) => typed(() => (item.amount = v)), { ariaLabel: `Item ${i + 1} amount` }),
+            h("span", { className: "code" }, f.currency),
+            remove(`item ${i + 1}`, () => change(() => s.items.splice(i, 1)), s.items.length === 1)),
+          toggles(item.members, (id) => change(() => flip(item.members, id)))))),
+        button("Add item", () => change(() => s.items.push({ amount: "", members: [] })), "link"),
+      ];
+  }
+}
+
+// What is left of `whole` once `parts` are taken, or null while any is not a number.
+function leftOf(whole, parts, digits) {
+  try {
+    return parts.filter((v) => String(v).trim()).reduce((rest, v) => rest - units(v, digits), units(whole, digits));
+  } catch {
+    return null;
+  }
+}
+
+// A split's running sum against what it must reach: [words, whether that is a problem].
+function tally(f) {
+  const s = f.split;
+  const digits = decimals(f.currency);
+  const whole = sumOf(f.paid, f.amount, f.currency);
+  const cash = (n) => money(decimal(n < 0n ? -n : n, digits), f.currency);
+  const plain = (n, places) => Number(decimal(n < 0n ? -n : n, places));
+  switch (s.mode) {
+    case "shares": {
+      const n = leftOf("0", Object.values(s.shares), 6);
+      return n === null ? null : [`${plain(n, 6)} shares in all`, false];
+    }
+    case "percent": {
+      const n = leftOf("100", Object.values(s.percents), 6);
+      return n === null ? null : [n ? `${plain(n, 6)}% ${n > 0n ? "left" : "over"}` : "Adds up to 100%", n !== 0n];
+    }
+    case "exact": {
+      const n = leftOf(whole, Object.values(s.amounts), digits);
+      return n === null ? null : [n ? `${cash(n)} ${n > 0n ? "left" : "over"}` : "Adds up", n !== 0n];
+    }
+    case "itemised": {
+      const n = leftOf(whole, s.items.map((item) => item.amount), digits);
+      if (n === null) return null;
+      return [n > 0n ? `${cash(n)} left, spread in proportion as tax and tip` : n < 0n ? `${cash(n)} over, taken off in proportion as a discount` : "Items add up to the amount", false];
+    }
+    default:
+      return null;
+  }
+}
+
+function categoryChips() {
+  return h("div", { id: "categories", className: "chips" }, T.categories.map((name) =>
+    h("button", { type: "button", className: `chip${form.category === name ? " on" : ""}`, onclick: () => {
+      form.category = form.category === name ? "" : name;
+      pristine = false;
+      paintCategories();
+    } }, name)));
+}
+
+function rateRow(f) {
+  if (f.currency === T.base) return null;
+  if (!f.rate) return button("Use a different rate for this one", () => change(() => (f.rate = [...T.currencies[f.currency]])), "link");
+  return h("div", { className: "row" },
+    amount(f.rate[0], (v) => typed(() => (f.rate[0] = v)), { ariaLabel: `${f.currency} amount` }), h("span", { className: "code" }, f.currency), "=",
+    amount(f.rate[1], (v) => typed(() => (f.rate[1] = v)), { ariaLabel: `${T.base} amount` }), h("span", { className: "code grow" }, T.base),
+    remove("rate", () => change(() => (f.rate = null))));
+}
+
+const dateField = (f) => field("Date", h("input", { type: "date", value: f.date, required: true, onchange: (e) => typed(() => (f.date = e.target.value)) }));
+const viaField = (label, part) => field(label, text(part.via, (v) => typed(() => (part.via = v)), { list: "vias", placeholder: "Card, Cash, UPI…" }));
+const noteField = (f) => field("Note", text(f.note, (v) => typed(() => (f.note = v)), { placeholder: "Optional", autocapitalize: "sentences" }));
+const descriptionField = (f, placeholder) =>
+  field("Description", text(f.description, (v) => typed(() => (f.description = v)), {
+    list: "descriptions", placeholder, autocapitalize: "sentences", onchange: (e) => guess(e.target.value),
+  }));
+
+const forms = {
+  expense: (f) => [
+    card(null,
+      descriptionField(f, "Dinner"),
+      amountRow(sumOf(f.paid, f.amount, f.currency), "expense", f.paid.several, (v) => typed(() => (f.amount = v)), f.currency, (c) => change(() => Object.assign(f, { currency: c, rate: null }))),
+      rateRow(f),
+      partyPick("Paid by", f.paid, () => f.amount, f.currency)),
+    card("Split", seg(MODES, f.split.mode, (m) => change(() => (f.split.mode = m))), splitBody(f), h("p", { id: "tally", className: "tally", ariaLive: "polite" })),
+    h("div", { id: "preview", className: "preview", ariaLive: "polite" }),
+    card(null, h("div", { className: "field" }, "Category", categoryChips()), h("div", { className: "pair" }, dateField(f), viaField("Paid with", f)), noteField(f)),
+  ],
+  transfer: (f) => [
+    card(null,
+      h("div", { className: "pair" }, h("div", { className: "list" }, partyPick("From", f.from, () => transferAmount(f), f.currency)), h("div", { className: "list" }, partyPick("To", f.to, () => transferAmount(f), f.currency))),
+      amountRow(transferAmount(f), "transfer", f.from.several || f.to.several, (v) => typed(() => (f.amount = v)), f.currency, (c) => change(() => (f.currency = c)))),
+    h("div", { id: "preview", className: "preview", ariaLive: "polite" }),
+    card(null, h("div", { className: "pair" }, dateField(f), viaField("Paid with", f)), descriptionField(f, "Settling up"), noteField(f)),
+  ],
+  exchange: (f) => [
+    ...[["gave", "Gave"], ["got", "Got"]].map(([name, title]) => {
+      const part = f[name];
+      return card(title,
+        amountRow(sumOf(part.by, part.amount, part.currency), name, part.by.several, (v) => typed(() => (part.amount = v)), part.currency, (c) => change(() => (part.currency = c))),
+        h("div", { className: "pair" }, h("div", { className: "list" }, partyPick("By", part.by, () => part.amount, part.currency)), viaField("As", part)));
+    }),
+    h("div", { id: "preview", className: "preview", ariaLive: "polite" }),
+    card(null, dateField(f), descriptionField(f, "ATM"), noteField(f)),
+  ],
+  cash: (f) => [
+    card(null,
+      h("p", { className: "hint" }, "Cash someone adds from their own money, such as cash brought from home.  It counts towards their cash in hand, not towards balances."),
+      field("Who", choose(T.members.map(({ id, name }) => [id, name]), f.member, (v) => change(() => (f.member = v)))),
+      amountRow(f.amount, "", false, (v) => typed(() => (f.amount = v)), f.currency, (c) => change(() => (f.currency = c)))),
+    h("div", { id: "preview", className: "preview", ariaLive: "polite" }),
+    card(null, dateField(f), noteField(f)),
+  ],
+};
+
+function submit() {
+  if (T?.locked || check(form).problem) return;
+  const event = { ...toEvent(form), at: new Date().toISOString(), by: me() };
+  store.addEvents(slug, [event]);
+  store.setPrefs(slug, event.kind === "expense" ? { currency: event.currency, via: event.via ?? "" } : {});
+  const kind = form.kind;
+  if (editing) {
+    stopEditing("Saved");
+  } else {
+    form = blank(kind);
+    pristine = true;
+    toast("Added");
+    render();
+    document.querySelector("main input")?.focus();
+  }
+  runSync();
+}
+
+function voidEntry() {
+  if (T?.locked || !confirm("Remove this entry?  Its history stays.")) return;
+  store.addEvents(slug, [{ entry: editing, kind: "void", at: new Date().toISOString(), by: me() }]);
+  stopEditing("Removed");
+  runSync();
+}
+
+// Opens an entry in the Add tab: to change it, or only to read it when the trip is locked.
+function openEntry(entry) {
+  editing = entry.entry;
+  form = fromEvent(entry);
+  pristine = false;
+  location.hash = "#add";
+  render();
+}
+
+function stopEditing(message) {
+  editing = null;
+  form = null;
+  pristine = true;
+  if (message) toast(message);
+  location.hash = "#book";
+  render();
+}
+
+function whoAreYou() {
+  return card("Who are you?",
+    h("p", { className: "hint" }, "Asked once on each device, to sign your entries."),
+    h("div", { className: "chips" }, T.members.map(({ id, name }) =>
+      h("button", { type: "button", className: "chip", onclick: () => (store.setPrefs(slug, { me: id }), (form = null), render()) }, name))));
+}
+
+function addTab() {
+  const reading = T.locked && editing;
+  if (T.locked && !editing) return [card(null, h("p", {}, "This trip is locked, so nothing can be added."), button("Open Settings", () => (location.hash = "#settings")))];
+  if (!reading && !T.members.some(({ id }) => id === me())) return [whoAreYou()];
+  form ??= blank("expense");
+  const shown = form.kind;
+  const history = editing && versions(E, editing);
+  const body = forms[shown](form);
+  return [
+    editing
+      ? h("div", { className: "row" }, h("h2", { className: "grow" }, `${reading ? "Viewing" : "Editing"} ${form.kind}`), button(reading ? "Back" : "Cancel", () => stopEditing()))
+      : seg(KINDS, shown, (k) => change(() => (form = blank(k)))),
+    ...(reading
+      ? [h("fieldset", { className: "reading", disabled: true }, body)]
+      : [...body, h("button", { id: "submit", type: "button", className: "btn primary wide", onclick: submit }, editing ? "Save changes" : `Add ${form.kind}`)]),
+    editing && card("History",
+      h("ul", { className: "history" }, history.map((v, i) => h("li", {}, `${i ? "Changed" : "Added"} by ${nameOf(v.by)}, ${when(v.at)}`))),
+      !reading && button("Remove entry", voidEntry, "danger")),
+  ];
+}
+
+// ---- Book ----------------------------------------------------------------
+
+const OTHER = "\u0000";
+const look = { words: "", kind: "", member: "", category: "", currency: "", date: "" };
+
+function shown(entry) {
+  const used = uses([entry]);
+  const { title, detail } = describe(entry);
+  const words = look.words.trim().toLowerCase();
+  return (!look.kind || entry.kind === look.kind)
+    && (!look.date || entry.date === look.date)
+    && (!look.member || used.members.has(look.member))
+    && (look.category === OTHER ? entry.kind === "expense" && !entry.category : !look.category || entry.category === look.category)
+    && (!look.currency || used.currencies.has(look.currency))
+    && (!words || `${title} ${detail} ${entry.note ?? ""}`.toLowerCase().includes(words));
+}
+
+function bookTab() {
+  if (!current(E).length) return [h("p", { className: "empty welcome" }, "No entries yet.")];
+  if (!T.members.some(({ id }) => id === look.member)) look.member = "";
+  if (look.category !== OTHER && !T.categories.includes(look.category)) look.category = "";
+  if (!codes().includes(look.currency)) look.currency = "";
+  const narrow = (key) => (value) => ((look[key] = value), paintBook());
+  return [
+    T.locked && h("p", { className: "hint" }, "Locked.  Tap an entry to read it; unlock in Settings to change it."),
+    card(null,
+      text(look.words, narrow("words"), { type: "search", placeholder: "Search", ariaLabel: "Search" }),
+      h("div", { className: "chips" }, KINDS.map(([kind, label]) => {
+        const node = chip(label, look.kind === kind, () => ((look.kind = look.kind === kind ? "" : kind), render()));
+        node.classList.add(`k-${kind}`);
+        return node;
+      })),
+      look.date && h("div", { className: "chips" }, chip(`${day(look.date)}  ×`, true, () => ((look.date = ""), render()))),
+      h("div", { className: "trio" },
+        choose([["", "Person"], ...T.members.map(({ id, name }) => [id, name])], look.member, narrow("member"), { ariaLabel: "Person" }),
+        choose([["", "Category"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], look.category, narrow("category"), { ariaLabel: "Category" }),
+        choose([["", "Currency"], ...codes().map((c) => [c, c])], look.currency, narrow("currency"), { ariaLabel: "Currency" }))),
+    h("div", { id: "ledger", className: "list" }, ledger()),
+  ];
+}
+
+const paintBook = () => $("#ledger")?.replaceChildren(...ledger().flat(Infinity).filter(Boolean));
+
+// A spending row opens the book already narrowed to it, keeping the person and currency chosen there.
+function showInBook({ category = "", date = "" }) {
+  Object.assign(look, { words: "", kind: "expense", member: spender, category, currency: paidIn, date });
+  location.hash = "#book";
+}
+
+function ledger() {
+  const all = current(E);
+  const entries = all.filter(shown).reverse();
+  const count = entries.length < all.length && h("p", { className: "hint" }, `${entries.length} of ${all.length} entries`);
+  if (!entries.length) return [count, h("p", { className: "empty" }, "Nothing matches.")];
+  const problems = new Map(tripProblems(T).length ? [] : report(T, E).problems.map(({ entry, message }) => [entry, message]));
+  const edited = new Set(E.filter((e, i) => E.findIndex((o) => o.entry === e.entry) !== i).map(({ entry }) => entry));
+  const days = Map.groupBy(entries, ({ date }) => date);
+  return [
+    count,
+    ...[...days].map(([date, list]) => [
+      h("p", { className: "day" }, day(date)),
+      h("div", { className: "entries" }, list.map((entry) => {
+        const { title, detail, sum } = describe(entry);
+        return h("button", { type: "button", className: `entry k-${entry.kind}`, onclick: () => openEntry(entry) },
+          h("span", { className: "title" }, title), h("span", { className: "sum" }, sum),
+          h("span", { className: "detail" }, detail), h("span", { className: "tag" }, edited.has(entry.entry) ? "edited" : ""),
+          problems.has(entry.entry) && h("span", { className: "problem" }, problems.get(entry.entry)));
+      })),
+    ]),
+  ];
+}
+
+// ---- Balances ------------------------------------------------------------
+
+function balancesTab() {
+  const list = codes();
+  if (!list.includes(shownIn)) shownIn = T.base;
+  if (!list.includes(paidIn)) paidIn = "";
+  const r = report(T, E, { currency: shownIn, only: paidIn || null });
+  const showIn = list.length > 1 && seg(list.map((code) => [code, code]), shownIn, (code) => ((shownIn = code), render()));
+  const loss = Number(r.forexLoss);
+  const nets = card(`Balances in ${r.currency}`,
+    h("div", { className: "list" }, r.members.map(({ name, net }) => {
+      const n = Number(net);
+      const [tone, words] = n > 0 ? ["gets", "gets back"] : n < 0 ? ["owes", "owes"] : ["square", "is square"];
+      return h("div", { className: "figure" }, h("span", {}, name), h("b", { className: tone }, `${words} ${n ? money(Math.abs(n), r.currency) : ""}`.trim()));
+    })),
+    r.settle.length > 0 && h("div", { className: "settle" },
+      r.settle.map(({ from, to, amount }) => h("p", {}, h("b", {}, nameOf(from)), " pays ", h("b", {}, nameOf(to)), " ", money(amount, r.currency)))),
+    loss ? h("p", { className: "hint" }, `Includes ${money(Math.abs(loss), r.currency)} ${loss > 0 ? "lost" : "gained"} on exchanges, shared equally.`) : null);
+
+  if (!r.members.some(({ member }) => member === spender)) spender = "";
+  const mine = r.spend.filter(({ member }) => !spender || member === spender);
+  const added = (cells, key) => {
+    const sums = new Map();
+    for (const cell of cells) sums.set(cell[key], (sums.get(cell[key]) ?? 0) + Number(cell.amount));
+    return sums;
+  };
+  const byCategory = added(mine, "category");
+  const rows = [...T.categories, ""].map((c) => [c, byCategory.get(c) ?? 0]).filter(([, value]) => value);
+  const top = Math.max(...rows.map(([, value]) => value));
+  const spending = card("Spending",
+    h("div", { className: "chips" }, [["", "Everyone"], ...r.members.map(({ member, name }) => [member, name])].map(([id, name]) =>
+      chip(name, id === spender, () => ((spender = id), render())))),
+    list.length > 1 && h("div", { className: "chips" }, [["", "All currencies"], ...list.map((code) => [code, code])].map(([code, label]) =>
+      chip(label, code === paidIn, () => ((paidIn = code), render())))),
+    rows.length
+      ? [
+          h("div", { className: "figure total" }, h("span", {}, "Total"), h("b", {}, money(rows.reduce((a, [, value]) => a + value, 0), r.currency))),
+          h("div", { className: "list" }, rows.map(([c, value]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ category: c || OTHER }) },
+            h("div", { className: "figure" }, h("span", {}, c || "Other"), h("b", {}, money(value, r.currency))),
+            h("div", { className: "track" }, h("div", { style: `width: ${(100 * value) / top}%` }))))),
+        ]
+      : h("p", { className: "empty" }, "Nothing spent yet."));
+
+  // The same spending, a row per day with spending, earliest first, with what had been spent by then.
+  if (dayCategory !== OTHER && !T.categories.includes(dayCategory)) dayCategory = "";
+  const inCategory = ({ category }) => !dayCategory || (dayCategory === OTHER ? !category : category === dayCategory);
+  let running = 0;
+  const days = [...added(mine.filter(inCategory), "date")]
+    .filter(([, value]) => value)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([date, value]) => [date, value, (running += value)]);
+  const busiest = Math.max(...days.map(([, value]) => value));
+  const narrowed = [spender && nameOf(spender), paidIn].filter(Boolean).join(", ");
+  const byDay = r.spend.length
+    ? card("By day",
+        choose([["", "All categories"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], dayCategory, (value) => ((dayCategory = value), render()), { ariaLabel: "Category" }),
+        narrowed && h("p", { className: "hint" }, `${narrowed} only, as chosen above.`),
+        days.length
+          ? h("div", { className: "list" }, days.map(([date, value, so]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ date, category: dayCategory }) },
+              h("div", { className: "figure" }, h("span", {}, day(date)), h("b", {}, money(value, r.currency))),
+              h("div", { className: "track" }, h("div", { style: `width: ${(100 * value) / busiest}%` })),
+              h("span", { className: "hint" }, `${money(so, r.currency)} so far`))))
+          : h("p", { className: "empty" }, "Nothing spent."))
+    : null;
+
+  const held = r.wallets.filter(({ expected }) => Number(expected));
+  const cash = r.wallets.length
+    ? card("Cash in hand",
+        h("p", { className: "hint" }, "What each person should be holding.  Below zero means a cash payment came from money the app never saw."),
+        h("div", { className: "list" }, r.members.map(({ member, name }) => {
+          const mine = held.filter((w) => w.member === member);
+          return h("div", { className: "figure" }, h("span", {}, name),
+            h("span", { className: "stack" }, mine.length
+              ? mine.map(({ currency, expected }) => h("b", { className: Number(expected) < 0 ? "owes" : "" }, money(expected, currency)))
+              : h("span", { className: "square" }, "none")));
+        })))
+    : null;
+
+  const problems = r.problems.length
+    ? card("Problems", h("div", { className: "list" }, r.problems.map(({ entry, message }) => {
+        const found = current(E).find((e) => e.entry === entry);
+        const words = found ? `${describe(found).title}: ${message}` : message;
+        return found
+          ? h("button", { type: "button", className: "btn", onclick: () => openEntry(found) }, words)
+          : h("p", { className: "error" }, words);
+      })))
+    : null;
+
+  return [cash, showIn, nets, spending, byDay, problems];
+}
+
+// ---- Settings ------------------------------------------------------------
+
+// A structural change redraws.  Typing only marks the draft unsaved, so the Save button stays put.
+function edit(fn) {
+  if (draft.locked) return;
+  fn(draft);
+  render();
+}
+
+function note(fn) {
+  if (draft.locked) return;
+  fn(draft);
+  paintSave();
+  paintReady();
+}
+
+function setLocked(value) {
+  if (!saved() && !confirm("Discard unsaved changes?")) return;
+  const question = value ? "Lock this trip?  Entries stay readable, and you can unlock it later." : "Unlock this trip?";
+  if (!confirm(question)) return;
+  const trip = store.trip(slug);
+  if (value) trip.locked = true;
+  else delete trip.locked;
+  store.saveTrip(slug, trip);
+  draft = store.trip(slug);
+  form = null;
+  editing = null;
+  pristine = true;
+  render();
+  runSync();
+}
+
+function save() {
+  if (store.trip(slug)?.locked) return;
+  for (const member of draft.members) member.name = member.name.trim();
+  draft.name = draft.name.trim();
+  for (const pair of Object.values(draft.currencies)) pair.forEach((part, i) => (pair[i] = part.trim()));
+  store.saveTrip(slug, draft);
+  draft = store.trip(slug);
+  render();
+  runSync();
+}
+
+function paintSave() {
+  const unsaved = !saved() && !draft?.locked;
+  $("#save").hidden = !unsaved;
+  $("#dirty").hidden = !unsaved;
+}
+
+function paintReady() {
+  $("#ready")?.replaceWith(readiness(draft));
+}
+
+function lockCard() {
+  const on = Boolean(draft.locked);
+  return card(on ? "Locked" : "Lock",
+    h("p", { className: "hint" }, on
+      ? "Entries can be read, not changed.  This applies to every device."
+      : "Stops edits from every device.  Unlock it the same way."),
+    button(on ? "Unlock trip" : "Lock trip", () => setLocked(!on)));
+}
+
+function settingsTab() {
+  const used = uses(E);
+  const body = [details(draft, E.length > 0), members(draft, used), currencies(draft, used), categories(draft, used), readiness(draft), device(), syncCard()];
+  return draft.locked ? [lockCard(), ...body] : [...body, lockCard()];
+}
+
+function details(trip, baseFixed) {
+  return card("Trip",
+    field("Name", h("input", { value: trip.name ?? "", autocomplete: "off", disabled: trip.locked, oninput: (e) => note((t) => (t.name = e.target.value)) })),
+    h("div", { className: "field" }, "Folder", h("span", { className: "code" }, slug)),
+    field("Base currency", h("select", { disabled: baseFixed || trip.locked, onchange: (e) => edit((t) => (t.base = e.target.value)) }, currencyOptions(CODES, trip.base))),
+    baseFixed && !trip.locked && h("p", { className: "hint" }, "Fixed once there are entries."));
+}
+
+function members(trip, used) {
+  return card("Members",
+    trip.members.length
+      ? h("div", { className: "list" }, trip.members.map(({ id, name }, i) =>
+          h("div", { className: "row" },
+            h("input", { className: "grow", value: name, autocomplete: "off", disabled: trip.locked, ariaLabel: `Member ${i + 1}`,
+              oninput: (e) => note((t) => (t.members[i].name = e.target.value)) }),
+            remove(name, () => edit((t) => t.members.splice(i, 1)), trip.locked || used.members.has(id)))))
+      : h("p", { className: "empty" }, "Nobody yet."),
+    !trip.locked && adder("Name", (name) => edit((t) => t.members.push({ id: newId(), name })), { autocapitalize: "words" }));
+}
+
+function currencies(trip, used) {
+  const listed = Object.keys(trip.currencies);
+  const free = CODES.filter((code) => code !== trip.base && !listed.includes(code));
+  const pickOne = h("select", { className: "grow", ariaLabel: "Currency" }, currencyOptions(free));
+  const rate = (code, [quote, base]) => {
+    const set = (i) => (e) => note((t) => (t.currencies[code][i] = e.target.value));
+    return h("div", { className: "row" },
+      h("input", { className: "amount", value: quote, inputMode: "decimal", disabled: trip.locked, ariaLabel: `${code} amount`, oninput: set(0) }),
+      h("span", { className: "code" }, code), "=",
+      h("input", { className: "amount", value: base, inputMode: "decimal", disabled: trip.locked, ariaLabel: `${trip.base} amount`, oninput: set(1) }),
+      h("span", { className: "code grow" }, trip.base),
+      remove(code, () => edit((t) => delete t.currencies[code]), trip.locked || used.currencies.has(code)));
+  };
+  return card("Currencies",
+    h("p", { className: "hint" }, `One fixed rate for each currency, for the whole trip.  Amounts in ${trip.base} need none.`),
+    listed.length ? h("div", { className: "list" }, listed.map((code) => rate(code, trip.currencies[code]))) : null,
+    !trip.locked && h("div", { className: "row" }, pickOne, button("Add", () => edit((t) => (t.currencies[pickOne.value] = ["1", ""])))));
+}
+
+function categories(trip, used) {
+  return card("Categories",
+    h("div", { className: "chips" }, trip.categories.map((name, i) =>
+      h("span", { className: "chip" }, name, remove(name, () => edit((t) => t.categories.splice(i, 1)), trip.locked || used.categories.has(name))))),
+    !trip.locked && adder("Category", (name) => edit((t) => t.categories.push(name)), { autocapitalize: "words" }));
+}
+
+function readiness(trip) {
+  const problems = tripProblems(trip);
+  return h("section", { id: "ready", className: "card" },
+    h("h2", {}, "Ready?"),
+    problems.length
+      ? h("div", { className: "state" }, h("ul", {}, problems.map((p) => h("li", {}, p))))
+      : h("p", { className: "state ok" }, "Ready for entries."));
+}
+
+function device() {
+  if (!T?.members.length) return null;
+  return card("This device",
+    field("You are", choose([["", "Not set"], ...T.members.map(({ id, name }) => [id, name])], me() ?? "", (v) => {
+      store.setPrefs(slug, { me: v || undefined });
+      form = null;
+      render();
+    })));
+}
+
+function syncCard() {
+  const node = syncBody();
+  node.id = "sync";
+  return node;
+}
+
+function syncBody() {
+  const link = store.link();
+  if (link) {
+    return card("Sync",
+      h("p", {}, link.folder ? `With the folder ${link.folder}.` : `With ${link.repo}${link.who ? `, as ${link.who}` : ""}.`),
+      syncError && h("p", { className: "error" }, syncError),
+      h("div", { className: "row" },
+        needsAccess ? button("Allow access", allow, "primary") : button("Sync now", runSync),
+        link.repo && button("Share link", share),
+        h("span", { className: "grow" }),
+        button("Disconnect", disconnect, "danger")),
+      link.repo && h("p", { className: "hint" }, "The link holds the key to the trip repo.  Share it only with the group."));
+  }
+  const error = h("p", { className: "error", ariaLive: "polite" });
+  async function useFolder() {
+    error.textContent = "";
+    try {
+      const handle = await pickFolder();
+      try {
+        await createFolder(handle).files();
+      } catch (e) {
+        await forgetFolder();
+        throw e;
+      }
+      store.setLink({ folder: handle.name });
+    } catch (e) {
+      if (e.name !== "AbortError") error.textContent = e.message;
+      return;
+    }
+    render();
+    runSync();
+  }
+  const repo = text("", fill, { placeholder: "owner/repo", autocapitalize: "none", spellcheck: false });
+  const token = text("", fill, { type: "password", placeholder: "github_pat_…", autocapitalize: "none", spellcheck: false });
+  let pasted = null;
+  function fill(value) {
+    const link = parseLink(value);
+    if (!link) return;
+    pasted = link;
+    [repo.value, token.value] = [link.repo, link.token];
+  }
+  async function connect() {
+    const repoName = repo.value.trim();
+    const link = { repo: repoName, token: token.value.trim(), ...(pasted?.who && pasted.repo === repoName && { who: pasted.who }) };
+    error.textContent = "";
+    try {
+      await createRemote(link).files();
+    } catch (e) {
+      error.textContent = e.status === 401 ? "GitHub refused the token." : e.status === 404 ? "No such repo, or the token cannot see it." : e.message;
+      return;
+    }
+    store.setLink(link);
+    if (pasted?.trip && pasted.repo === repoName) store.open(pasted.trip);
+    render();
+    runSync();
+  }
+  return card("Sync",
+    h("p", { className: "hint" }, "Paste the trip link, or the repo and its token."),
+    field("Repository", repo),
+    field("Token", token),
+    error,
+    button("Connect", connect, "primary"),
+    canPickFolder() && [
+      h("p", { className: "hint" }, "Or keep the trip files in a folder on this computer, with no token."),
+      button("Choose folder", useFolder),
+    ]);
+}
+
+async function allow() {
+  if (await allowFolder(await savedFolder())) runSync();
+}
+
+async function disconnect() {
+  if (!confirm("Stop syncing this device?  Its trips stay here.")) return;
+  await forgetFolder();
+  store.setLink(null);
+  syncError = "";
+  needsAccess = false;
+  render();
+}
+
+async function share() {
+  const url = shareUrl();
+  try {
+    if (navigator.share) await navigator.share({ title: T?.name ?? "Expenses", url });
+    else {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    }
+  } catch (error) {
+    if (error.name !== "AbortError") toast("Could not share the link");
+  }
+}
+
+// ---- Sync ----------------------------------------------------------------
+
+let syncing = false;
+let again = false;
+let syncError = "";
+let needsAccess = false;
+
+// Where this device syncs to: a GitHub repo, or a folder on this computer.
+// The name stored with the token.  It is only a commit label, not a member.
+function gitAuthor(who) {
+  if (!who) return null;
+  const local = who.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "friend";
+  return { name: who, email: `${local}@expense.invalid` };
+}
+
+async function remoteOf(link) {
+  if (link.repo) {
+    const remote = createRemote(link);
+    const write = remote.write.bind(remote);
+    remote.write = (path, text, message, sha) => write(path, text, message, sha, gitAuthor(link.who));
+    return remote;
+  }
+  const handle = await savedFolder();
+  if (!handle) throw new RemoteError(404, "The folder is no longer chosen.  Disconnect and choose it again.");
+  return createFolder(handle);
+}
+
+async function runSync() {
+  if (!store.link()) return paintStatus();
+  if (syncing) return void (again = true);
+  syncing = true;
+  paintStatus();
+  const before = snapshot();
+  const clean = saved();
+  try {
+    const { notices } = await sync(store, await remoteOf(store.link()));
+    syncError = "";
+    needsAccess = false;
+    if (notices.length) toast(notices.join("  "));
+  } catch (error) {
+    needsAccess = Boolean(store.link()?.folder) && error.status === 403;
+    syncError = error.status === 401 ? "GitHub refused the token." : navigator.onLine || store.link()?.folder ? error.message : "";
+  }
+  syncing = false;
+  if (store.link()) $("#sync")?.replaceWith(syncCard());
+  if (snapshot() !== before) arrived(clean);
+  if (again) {
+    again = false;
+    return runSync();
+  }
+  paintStatus();
+}
+
+const snapshot = () => JSON.stringify([store.slugs(), slug && store.trip(slug), slug && store.events(slug).length]);
+
+// Something came from the repo.  Redraw, unless that would disturb what is being typed.
+function arrived(clean) {
+  if (!slug) slug = pick(store.opened());
+  const froze = Boolean(draft) && !draft.locked && Boolean(store.trip(slug)?.locked);
+  if ((clean || froze) && slug) draft = store.trip(slug);
+  if (froze) {
+    form = null;
+    editing = null;
+    pristine = true;
+    toast("This trip was locked.");
+    render();
+    return;
+  }
+  if (tab() === "add" && !pristine) return paintStatus();
+  if (tab() === "settings" && !clean) return paintStatus();
+  render();
+}
+
+function paintStatus() {
+  const node = $("#status");
+  const waiting = slug ? store.pending(slug) : 0;
+  const [words, tone] = !store.link() ? ["Local only", ""]
+    : syncing ? ["Syncing…", ""]
+    : needsAccess ? ["Tap to allow folder", "wait"]
+    : syncError ? ["Sync failed", "bad"]
+    : !navigator.onLine && store.link().repo ? [waiting ? `Offline · ${waiting} to send` : "Offline", "wait"]
+    : waiting ? [`${waiting} to send`, "wait"]
+    : ["Synced", "good"];
+  node.textContent = words;
+  node.className = `status ${tone}`;
+  node.title = syncError;
+}
+
+$("#status").addEventListener("click", () => {
+  if (needsAccess) allow();
+  else if (store.link() && !syncError) runSync();
+  else location.hash = "#settings";
+});
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && runSync());
+addEventListener("online", runSync);
+addEventListener("offline", paintStatus);
+setInterval(() => document.visibilityState === "visible" && runSync(), 60_000);
+
+// ---- Page ----------------------------------------------------------------
+
+function render() {
+  T = slug ? store.trip(slug) : null;
+  E = slug ? store.events(slug) : [];
+  const slugs = store.slugs();
+  const select = $("#trips");
+  select.replaceChildren(
+    ...slugs.map((s) => h("option", { value: s, selected: s === slug }, store.trip(s).name || s)),
+    h("option", { value: NEW }, "New trip…"),
+  );
+  select.hidden = !slugs.length;
+  $("#title").hidden = Boolean(slugs.length);
+  for (const link of document.querySelectorAll("nav a")) link.ariaCurrent = link.hash === `#${tab()}` ? "page" : null;
+  paintSave();
+  paintStatus();
+  $("#lock").hidden = !T?.locked;
+
+  $("#descriptions").replaceChildren(...[...new Set(current(E).reverse().map((e) => e.kind === "expense" && e.description).filter(Boolean))]
+    .slice(0, 100).map((value) => h("option", { value })));
+  $("#vias").replaceChildren(...[...new Set([CASH, ...current(E).flatMap((e) => [e.via, e.gave?.via, e.got?.via])].filter(Boolean))]
+    .map((value) => h("option", { value })));
+
+  const main = $("#main");
+  if (!slug) {
+    main.replaceChildren(
+      h("div", { className: "welcome" }, h("p", {}, "No trips on this device yet."), button("New trip", openCreate, "primary")),
+      syncCard());
+    return;
+  }
+  if (tab() !== "settings" && tripProblems(T).length) {
+    main.replaceChildren(card(null, h("p", {}, "The trip needs its settings first."), button("Open Settings", () => (location.hash = "#settings"), "primary")));
+    return;
+  }
+  main.replaceChildren(...{ add: addTab, book: bookTab, balances: balancesTab, settings: settingsTab }[tab()]().flat(Infinity).filter(Boolean));
+  if (tab() === "add") paintPreview();
+}
+
+addEventListener("hashchange", () => {
+  if (parseLink(location.hash)) {
+    takeLink(location.hash);
+    slug = pick(store.opened());
+    draft = slug ? store.trip(slug) : null;
+    runSync();
+  }
+  render();
+  scrollTo(0, 0);
+});
+
+// ---- Trips ---------------------------------------------------------------
+
+const dialog = $("#create");
+const create = dialog.querySelector("form");
+const createError = dialog.querySelector(".error");
+const fields = create.elements;
+const suggest = (name) => `${new Date().getFullYear()}-${name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+let slugTouched = false;
+
+fields.base.replaceChildren(...currencyOptions(CODES, "INR"));
+fields.name.addEventListener("input", () => slugTouched || (fields.slug.value = suggest(fields.name.value)));
+fields.slug.addEventListener("input", () => (slugTouched = true));
+
+function openCreate() {
+  create.reset();
+  fields.base.value = "INR";
+  slugTouched = false;
+  createError.textContent = "";
+  dialog.showModal();
+}
+
+create.addEventListener("submit", (event) => {
+  if (event.submitter?.value !== "create") return;
+  const name = fields.name.value.trim();
+  const folder = fields.slug.value.trim();
+  const problem = !isSlug(folder) ? "Folder must be the year, then the trip: 2026-thailand."
+    : store.trip(folder) ? "That trip is already here."
+    : "";
+  if (problem) {
+    event.preventDefault();
+    createError.textContent = problem;
+    return;
+  }
+  if (!saved() && !confirm("Discard unsaved changes?")) {
+    event.preventDefault();
+    return;
+  }
+  store.saveTrip(folder, { schemaVersion: SCHEMA_VERSION, name, base: fields.base.value, currencies: {}, members: [], categories: [...CATEGORIES] });
+  open(folder);
+  location.hash = "#settings";
+});
+
+function open(next) {
+  slug = next;
+  draft = store.trip(next);
+  form = null;
+  editing = null;
+  pristine = true;
+  store.open(next);
+  render();
+}
+
+$("#trips").addEventListener("change", (event) => {
+  const next = event.target.value;
+  event.target.value = slug;
+  if (next === NEW) openCreate();
+  else if (saved() || confirm("Discard unsaved changes?")) open(next);
+});
+
+$("#save").addEventListener("click", save);
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
+render();
+runSync();
+</script>
+</body>
+</html>
