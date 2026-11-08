@@ -9,7 +9,7 @@ Trip data lives in a private GitHub repo, never in this one.  Each device keeps 
 1. Make a fine-grained GitHub token: the private data repo only, Contents read and write.
 2. Open the app, create the trip, and fill in Settings.
 3. Under Settings, Sync: paste the repo and token, then Connect.
-4. Share link sends the others a link that carries the token and a name (`who`).  That name is only the commit label.  It is not a member.  On iPhone, add the app to the Home Screen first, then paste the link into Settings there.
+4. Share link sends the others a link that carries the token and a name (`who`).  That name is only the commit label.  It is not a member.  On iPhone, open that link in Safari and add it to the Home Screen.  The icon keeps the link.  Safari's sign-in does not carry over.
 
 Revoke the token after the trip.
 

@@ -215,7 +215,9 @@ function takeLink(hash) {
   if (!link) return;
   store.setLink({ repo: link.repo, token: link.token, ...(link.who && { who: link.who }) });
   if (link.trip) store.open(link.trip);
-  history.replaceState(null, "", `${location.pathname}${location.search}#add`);
+  // The Home Screen icon keeps this address, and none of Safari's storage.  Leave the link in Safari
+  // so Add to Home Screen can hand it to the icon.  The icon then saves it and takes it out of the address.
+  if (navigator.standalone || matchMedia("(display-mode: standalone)").matches) history.replaceState(null, "", `${location.pathname}${location.search}#add`);
 }
 
 const shareUrl = () => {
