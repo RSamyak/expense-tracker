@@ -117,6 +117,8 @@ button.entry:hover { background: color-mix(in srgb, var(--kind, transparent) 24%
 .owes { color: var(--red); }
 .square { color: var(--grey); }
 .stack { display: grid; justify-items: end; gap: 2px; }
+.spend { display: grid; gap: 10px; }
+.spend .filters { display: grid; gap: 8px; }
 .figure.total { font-size: 18px; font-weight: 700; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .settle { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 15px; font-variant-numeric: tabular-nums; }
 .bar { display: grid; gap: 4px; font-size: 15px; }
@@ -803,11 +805,16 @@ function balancesTab() {
   const byCategory = added(mine, "category");
   const rows = [...T.categories, ""].map((c) => [c, byCategory.get(c) ?? 0]).filter(([, value]) => value);
   const top = Math.max(...rows.map(([, value]) => value));
-  const spending = card("Spending",
+  const filters = h("div", { className: "filters" },
     h("div", { className: "chips" }, [["", "Everyone"], ...r.members.map(({ member, name }) => [member, name])].map(([id, name]) =>
       chip(name, id === spender, () => ((spender = id), render())))),
     list.length > 1 && h("div", { className: "chips" }, [["", "All currencies"], ...list.map((code) => [code, code])].map(([code, label]) =>
-      chip(label, code === paidIn, () => ((paidIn = code), render())))),
+      chip(label, code === paidIn, () => {
+        paidIn = code;
+        if (code) shownIn = code;
+        render();
+      }))));
+  const spending = card("Spending",
     rows.length
       ? [
           h("div", { className: "figure total" }, h("span", {}, "Total"), h("b", {}, money(rows.reduce((a, [, value]) => a + value, 0), r.currency))),
@@ -826,11 +833,9 @@ function balancesTab() {
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, value]) => [date, value, (running += value)]);
   const busiest = Math.max(...days.map(([, value]) => value));
-  const narrowed = [spender && nameOf(spender), paidIn].filter(Boolean).join(", ");
   const byDay = r.spend.length
     ? card("By day",
         choose([["", "All categories"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], dayCategory, (value) => ((dayCategory = value), render()), { ariaLabel: "Category" }),
-        narrowed && h("p", { className: "hint" }, `${narrowed} only, as chosen above.`),
         days.length
           ? h("div", { className: "list" }, days.map(([date, value, so]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ date, category: dayCategory }) },
               h("div", { className: "figure" }, h("span", {}, day(date)), h("b", {}, money(value, r.currency))),
@@ -862,7 +867,7 @@ function balancesTab() {
       })))
     : null;
 
-  return [cash, showIn, nets, spending, byDay, problems];
+  return [cash, showIn, nets, h("div", { className: "spend" }, filters, spending, byDay), problems];
 }
 
 // ---- Settings ------------------------------------------------------------
