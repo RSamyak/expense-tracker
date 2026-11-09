@@ -100,7 +100,8 @@ button.chip.on { background: var(--navy); border-color: var(--navy); color: #fff
 .k-exchange { --kind: var(--amber); }
 .k-cash { --kind: #8a8476; }
 button.chip[class*="k-"]::before { content: ""; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--kind); box-shadow: 0 0 0 1.5px #fff; }
-.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+span.chip.fixed { padding: 6px 12px; }
 fieldset.reading { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .reading input, .reading select { opacity: 1; -webkit-text-fill-color: currentColor; }
 .reading .btn.x, .reading .btn.link { display: none; }
@@ -159,8 +160,6 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </nav>
 <p id="toast" role="status" hidden></p>
 <datalist id="descriptions"></datalist>
-<datalist id="vias"></datalist>
-
 <dialog id="create">
   <form method="dialog">
     <h2>New trip</h2>
@@ -183,6 +182,7 @@ import { allowFolder, canPickFolder, createFolder, forgetFolder, pickFolder, sav
 import { sync } from "./sync.js";
 
 const CATEGORIES = ["Flights", "Stay", "Docs", "Activities", "Food", "Travel", "Purchases", "Big"];
+const INSTRUMENTS = [CASH, "Online"];
 const CODES = Intl.supportedValuesOf("currency");
 const currencyName = new Intl.DisplayNames(["en"], { type: "currency" });
 const TABS = ["add", "book", "balances", "settings"];
@@ -294,9 +294,9 @@ const codes = () => [T.base, ...Object.keys(T.currencies)];
 function describe(entry) {
   switch (entry.kind) {
     case "expense":
-      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category].filter(Boolean).join(" · "), sum: money(total(entry.paid, entry.currency) ?? 0, entry.currency) };
+      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category, entry.via].filter(Boolean).join(" · "), sum: money(total(entry.paid, entry.currency) ?? 0, entry.currency) };
     case "transfer":
-      return { title: entry.description || "Transfer", detail: `${names(entry.from)} → ${names(entry.to)}`, sum: money(total(entry.from, entry.currency) ?? 0, entry.currency) };
+      return { title: entry.description || "Transfer", detail: [`${names(entry.from)} → ${names(entry.to)}`, entry.via].filter(Boolean).join(" · "), sum: money(total(entry.from, entry.currency) ?? 0, entry.currency) };
     case "exchange": {
       const side = ({ currency, by }) => money(total(by, currency) ?? 0, currency);
       return { title: entry.description || "Exchange", detail: `${names(entry.gave?.by)}: ${side(entry.gave)} → ${side(entry.got)}`, sum: side(entry.got) };
@@ -330,18 +330,19 @@ function blank(kind) {
   const everyone = T.members.map(({ id }) => id);
   const other = everyone.find((id) => id !== me()) ?? me();
   const currency = codes().includes(prefs.currency) ? prefs.currency : T.base;
+  const via = T.instruments.includes(prefs.via) ? prefs.via : "";
   const foreign = codes().find((code) => code !== T.base) ?? T.base;
   const common = { entry: newId(), kind, date: form?.date ?? today(), description: "", note: "" };
   switch (kind) {
     case "expense":
       return {
-        ...common, currency, amount: "", category: "", via: prefs.via ?? "", rate: null, paid: party(me()),
+        ...common, currency, amount: "", category: "", via, rate: null, paid: party(me()),
         split: { mode: "equal", members: everyone, shares: Object.fromEntries(everyone.map((id) => [id, "1"])), percents: {}, amounts: {}, items: [{ amount: "", members: [] }] },
       };
     case "transfer":
-      return { ...common, currency, amount: "", via: "", from: party(me()), to: party(other) };
+      return { ...common, currency, amount: "", via, from: party(me()), to: party(other) };
     case "exchange":
-      return { ...common, gave: { currency: T.base, amount: "", via: "", by: party(me()) }, got: { currency: foreign, amount: "", via: CASH, by: party(me()) } };
+      return { ...common, gave: { currency: T.base, amount: "", via, by: party(me()) }, got: { currency: foreign, amount: "", via: CASH, by: party(me()) } };
     default:
       return { ...common, member: me(), currency: foreign, amount: "" };
   }
@@ -391,7 +392,7 @@ function fromEvent(entry) {
 // The entry the form describes, without its version stamp.
 function toEvent(f) {
   const words = { ...(f.description.trim() && { description: f.description.trim() }), ...(f.note.trim() && { note: f.note.trim() }) };
-  const via = (v) => (v.trim() ? { via: v.trim() } : {});
+  const via = (v) => (v ? { via: v } : {});
   const head = { entry: f.entry, kind: f.kind, date: f.date };
   switch (f.kind) {
     case "expense": {
@@ -588,7 +589,19 @@ function rateRow(f) {
 }
 
 const dateField = (f) => field("Date", h("input", { type: "date", value: f.date, required: true, onchange: (e) => typed(() => (f.date = e.target.value)) }));
-const viaField = (label, part) => field(label, text(part.via, (v) => typed(() => (part.via = v)), { list: "vias", placeholder: "Card, Cash, UPI…" }));
+// One instrument for a payment, redrawn in place so nothing being typed is disturbed.
+function viaField(label, part) {
+  const chips = () => h("div", { className: "chips" }, T.instruments.map((name) => chip(name, part.via === name, () => {
+    part.via = name;
+    pristine = false;
+    const next = chips();
+    node.replaceWith(next);
+    node = next;
+    paintPreview();
+  })));
+  let node = chips();
+  return h("div", { className: "field" }, label, node);
+}
 const noteField = (f) => field("Note", text(f.note, (v) => typed(() => (f.note = v)), { placeholder: "Optional", autocapitalize: "sentences" }));
 const descriptionField = (f, placeholder) =>
   field("Description", text(f.description, (v) => typed(() => (f.description = v)), {
@@ -637,7 +650,7 @@ function submit() {
   if (T?.locked || check(form).problem) return;
   const event = { ...toEvent(form), at: new Date().toISOString(), by: me() };
   store.addEvents(slug, [event]);
-  store.setPrefs(slug, event.kind === "expense" ? { currency: event.currency, via: event.via ?? "" } : {});
+  store.setPrefs(slug, { expense: { currency: event.currency, via: event.via }, transfer: { via: event.via } }[event.kind] ?? {});
   const kind = form.kind;
   if (editing) {
     stopEditing("Saved");
@@ -707,7 +720,7 @@ function addTab() {
 // ---- Book ----------------------------------------------------------------
 
 const OTHER = "\u0000";
-const look = { words: "", kind: "", member: "", category: "", currency: "", date: "" };
+const look = { words: "", kind: "", member: "", category: "", currency: "", via: "", date: "" };
 
 function shown(entry) {
   const used = uses([entry]);
@@ -718,6 +731,7 @@ function shown(entry) {
     && (!look.member || used.members.has(look.member))
     && (look.category === OTHER ? entry.kind === "expense" && !entry.category : !look.category || entry.category === look.category)
     && (!look.currency || used.currencies.has(look.currency))
+    && (!look.via || used.instruments.has(look.via))
     && (!words || `${title} ${detail} ${entry.note ?? ""}`.toLowerCase().includes(words));
 }
 
@@ -726,6 +740,7 @@ function bookTab() {
   if (!T.members.some(({ id }) => id === look.member)) look.member = "";
   if (look.category !== OTHER && !T.categories.includes(look.category)) look.category = "";
   if (!codes().includes(look.currency)) look.currency = "";
+  if (!T.instruments.includes(look.via)) look.via = "";
   const narrow = (key) => (value) => ((look[key] = value), paintBook());
   return [
     T.locked && h("p", { className: "hint" }, "Locked.  Tap an entry to read it; unlock in Settings to change it."),
@@ -737,10 +752,11 @@ function bookTab() {
         return node;
       })),
       look.date && h("div", { className: "chips" }, chip(`${day(look.date)}  ×`, true, () => ((look.date = ""), render()))),
-      h("div", { className: "trio" },
+      h("div", { className: "picks" },
         choose([["", "Person"], ...T.members.map(({ id, name }) => [id, name])], look.member, narrow("member"), { ariaLabel: "Person" }),
         choose([["", "Category"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], look.category, narrow("category"), { ariaLabel: "Category" }),
-        choose([["", "Currency"], ...codes().map((c) => [c, c])], look.currency, narrow("currency"), { ariaLabel: "Currency" }))),
+        choose([["", "Currency"], ...codes().map((c) => [c, c])], look.currency, narrow("currency"), { ariaLabel: "Currency" }),
+        choose([["", "Paid with"], ...T.instruments.map((v) => [v, v])], look.via, narrow("via"), { ariaLabel: "Paid with" }))),
     h("div", { id: "ledger", className: "list" }, ledger()),
   ];
 }
@@ -749,7 +765,7 @@ const paintBook = () => $("#ledger")?.replaceChildren(...ledger().flat(Infinity)
 
 // A spending row opens the book already narrowed to it, keeping the person and currency chosen there.
 function showInBook({ category = "", date = "" }) {
-  Object.assign(look, { words: "", kind: "expense", member: spender, category, currency: paidIn, date });
+  Object.assign(look, { words: "", kind: "expense", member: spender, category, currency: paidIn, via: "", date });
   location.hash = "#book";
 }
 
@@ -934,7 +950,7 @@ function lockCard() {
 
 function settingsTab() {
   const used = uses(E);
-  const body = [details(draft, E.length > 0), members(draft, used), currencies(draft, used), categories(draft, used), readiness(draft), device(), syncCard()];
+  const body = [details(draft, E.length > 0), members(draft, used), currencies(draft, used), instruments(draft, used), categories(draft, used), readiness(draft), device(), syncCard()];
   return draft.locked ? [lockCard(), ...body] : [...body, lockCard()];
 }
 
@@ -975,6 +991,17 @@ function currencies(trip, used) {
     h("p", { className: "hint" }, `One fixed rate for each currency, for the whole trip.  Amounts in ${trip.base} need none.`),
     listed.length ? h("div", { className: "list" }, listed.map((code) => rate(code, trip.currencies[code]))) : null,
     !trip.locked && h("div", { className: "row" }, pickOne, button("Add", () => edit((t) => (t.currencies[pickOne.value] = ["1", ""])))));
+}
+
+// Cash is fixed: it is the instrument that moves cash in hand.
+function instruments(trip, used) {
+  const listed = trip.instruments ?? [];
+  return card("Paid with",
+    h("p", { className: "hint" }, `Only ${CASH} counts towards cash in hand.`),
+    h("div", { className: "chips" }, listed.map((name, i) => name === CASH
+      ? h("span", { className: "chip fixed" }, name)
+      : h("span", { className: "chip" }, name, remove(name, () => edit((t) => t.instruments.splice(i, 1)), trip.locked || used.instruments.has(name))))),
+    !trip.locked && adder("Card, UPI…", (name) => edit((t) => (t.instruments ??= []).push(name)), { autocapitalize: "words" }));
 }
 
 function categories(trip, used) {
@@ -1221,9 +1248,6 @@ function render() {
 
   $("#descriptions").replaceChildren(...[...new Set(current(E).reverse().map((e) => e.kind === "expense" && e.description).filter(Boolean))]
     .slice(0, 100).map((value) => h("option", { value })));
-  $("#vias").replaceChildren(...[...new Set([CASH, ...current(E).flatMap((e) => [e.via, e.gave?.via, e.got?.via])].filter(Boolean))]
-    .map((value) => h("option", { value })));
-
   const main = $("#main");
   if (!slug) {
     main.replaceChildren(
@@ -1287,7 +1311,7 @@ create.addEventListener("submit", (event) => {
     event.preventDefault();
     return;
   }
-  store.saveTrip(folder, { schemaVersion: SCHEMA_VERSION, name, base: fields.base.value, currencies: {}, members: [], categories: [...CATEGORIES] });
+  store.saveTrip(folder, { schemaVersion: SCHEMA_VERSION, name, base: fields.base.value, currencies: {}, members: [], categories: [...CATEGORIES], instruments: [...INSTRUMENTS] });
   open(folder);
   location.hash = "#settings";
 });

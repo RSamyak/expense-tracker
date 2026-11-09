@@ -114,6 +114,10 @@ export function tripProblems(trip) {
   }
   if (blank(categories)) problems.push("a category has no name");
   if (repeats(categories)) problems.push("categories repeat");
+  const instruments = trip.instruments ?? [];
+  if (!instruments.includes(CASH)) problems.push(`instruments must include ${CASH}`);
+  if (blank(instruments)) problems.push("an instrument has no name");
+  if (repeats(instruments)) problems.push("instruments repeat");
   return problems;
 }
 
@@ -139,6 +143,13 @@ function rate(trip, currency, override) {
   const b = units(base, decimals(trip.base));
   if (q <= 0n || b <= 0n) fail(`rate for ${currency} must be positive`);
   return [q, b];
+}
+
+// What a payment was made with.  It says nothing about who paid; only cash moves a wallet.
+function paidWith(trip, via) {
+  if (!via) fail("say what it was paid with");
+  if (!trip.instruments.includes(via)) fail(`unknown instrument: ${via}`);
+  return via;
 }
 
 function money(trip, map, currency) {
@@ -230,9 +241,9 @@ export function current(events) {
 export const versions = (events, entry) =>
   events.filter((event) => event.entry === entry).sort((a, b) => (a.at < b.at ? -1 : 1));
 
-// The members, categories, and currencies that current entries rely on.
+// The members, categories, currencies, and instruments that current entries rely on.
 export function uses(events) {
-  const found = { members: new Set(), categories: new Set(), currencies: new Set() };
+  const found = { members: new Set(), categories: new Set(), currencies: new Set(), instruments: new Set() };
   const people = (map) => Object.keys(map ?? {}).forEach((id) => found.members.add(id));
   for (const entry of current(events)) {
     const { split } = entry;
@@ -248,9 +259,11 @@ export function uses(events) {
     for (const part of [entry.gave, entry.got]) {
       people(part?.by);
       if (part?.currency) found.currencies.add(part.currency);
+      if (part?.via) found.instruments.add(part.via);
     }
     if (entry.currency) found.currencies.add(entry.currency);
     if (entry.category) found.categories.add(entry.category);
+    if (entry.via) found.instruments.add(entry.via);
   }
   return found;
 }
@@ -266,7 +279,8 @@ const value = (list) => sum(list.map((p) => p.value));
 
 function side(trip, part, name) {
   if (!part?.currency) fail(`${name} needs a currency`);
-  return { ...money(trip, part.by, part.currency), currency: part.currency, via: part.via };
+  const { entries, total } = money(trip, part.by, part.currency);
+  return { entries, total, currency: part.currency, via: paidWith(trip, part.via) };
 }
 
 // One entry becomes postings (what it does to balances) and cash moves (what it does to wallets).
@@ -276,11 +290,12 @@ function post(trip, entry) {
   const cash = (name, currency, amount) => ({ member: name, currency, amount, date: entry.date });
   switch (entry.kind) {
     case "expense": {
-      const { currency, via } = entry;
+      const { currency } = entry;
       if (trip.categories && entry.category && !trip.categories.includes(entry.category)) fail(`unknown category: ${entry.category}`);
       const pair = rate(trip, currency, entry.rate);
       const paid = money(trip, entry.paid, currency);
       const owed = shares(trip, id, paid.total, currency, entry.split);
+      const via = paidWith(trip, entry.via);
       return {
         postings: [
           ...postings("paid", currency, pair, paid.entries, id),
@@ -290,11 +305,12 @@ function post(trip, entry) {
       };
     }
     case "transfer": {
-      const { currency, via } = entry;
+      const { currency } = entry;
       const pair = rate(trip, currency);
       const from = money(trip, entry.from, currency);
       const to = money(trip, entry.to, currency);
       if (from.total !== to.total) fail("a transfer must send what it receives");
+      const via = paidWith(trip, entry.via);
       return {
         postings: [...postings("sent", currency, pair, from.entries, id), ...postings("received", currency, pair, to.entries, id)],
         moves: via === CASH

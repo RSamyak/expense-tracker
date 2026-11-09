@@ -12,11 +12,12 @@ const trip = {
     { id: "chitra", name: "Chitra" },
   ],
   categories: ["Food", "Stay"],
+  instruments: ["Cash", "Online"],
 };
 
 let clock = 0;
 const event = (entry, fields) => ({ entry, at: `2026-01-01T00:00:${String(clock++).padStart(2, "0")}Z`, by: "asha", date: "2026-01-01", ...fields });
-const expense = (entry, fields) => event(entry, { kind: "expense", currency: "INR", category: "Food", ...fields });
+const expense = (entry, fields) => event(entry, { kind: "expense", currency: "INR", category: "Food", via: "Online", ...fields });
 const byMember = (result, field) => Object.fromEntries(result.members.map((m) => [m.member, m[field]]));
 // What one member spent, by category.  These tests use one date, so each category has one cell.
 const spentBy = (result, member) => Object.fromEntries(result.spend.filter((s) => s.member === member).map((s) => [s.category, s.amount]));
@@ -90,7 +91,7 @@ test("foreign currency converts once per entry, to the paisa", () => {
 
 test("an exchange loss is shared equally, to the paisa", () => {
   const result = report(trip, [
-    event("atm", { kind: "exchange", gave: { currency: "INR", by: { asha: "7364.17" } }, got: { currency: "VND", via: "Cash", by: { asha: "2000000" } } }),
+    event("atm", { kind: "exchange", gave: { currency: "INR", via: "Online", by: { asha: "7364.17" } }, got: { currency: "VND", via: "Cash", by: { asha: "2000000" } } }),
   ]);
   assert.equal(result.forexLoss, "681.68");
   assert.deepEqual(Object.values(byMember(result, "forex")).sort(), ["227.22", "227.23", "227.23"]);
@@ -100,8 +101,10 @@ test("an exchange loss is shared equally, to the paisa", () => {
 test("many awkward conversions still leave nets in whole paise that add up to zero", () => {
   const odd = ["1", "7", "13", "99", "1001", "33333", "684001"].map((amount, i) =>
     expense(`v${i}`, { currency: "VND", paid: { [trip.members[i % 3].id]: amount } }));
-  const atm = event("atm", { kind: "exchange", gave: { currency: "USD", by: { bala: "10.01" } }, got: { currency: "VND", by: { bala: "250001" } } });
-  const nets = Object.values(byMember(report(trip, [...odd, atm]), "net"));
+  const atm = event("atm", { kind: "exchange", gave: { currency: "USD", via: "Cash", by: { bala: "10.01" } }, got: { currency: "VND", via: "Cash", by: { bala: "250001" } } });
+  const result = report(trip, [...odd, atm]);
+  assert.deepEqual(result.problems, []);
+  const nets = Object.values(byMember(result, "net"));
   assert.equal(nets.reduce((a, n) => a + units(n, 2), 0n), 0n);
 });
 
@@ -162,7 +165,7 @@ test("cash wallets follow own cash and cash payments, and own cash moves no bala
   const spending = [
     paidInCash("cab", { kind: "expense", category: "Food", paid: { bala: "30000" } }),
     paidInCash("tip", { kind: "transfer", from: { asha: "20000" }, to: { bala: "20000" } }),
-    event("card", { kind: "expense", category: "Food", currency: "VND", paid: { bala: "50000" } }),
+    expense("card", { currency: "VND", paid: { bala: "50000" } }),
   ];
   const result = report(trip, [
     event("own", { kind: "cash", member: "bala", currency: "VND", amount: "65000" }),
@@ -201,6 +204,7 @@ test("trip settings are checked in words", () => {
     members: [{ id: "a", name: "Asha" }, { id: "a", name: "Asha" }, { id: "c", name: " " }],
     currencies: { INR: ["1", "1"], VND: ["1.5", "1"], ZZZ: ["1", "1"] },
     categories: ["Food", "Food"],
+    instruments: ["Online", "Online", " "],
   };
   assert.deepEqual(tripProblems(broken), [
     "a member has no name",
@@ -210,7 +214,12 @@ test("trip settings are checked in words", () => {
     "VND: whole numbers only: 1.5",
     "unknown currency: ZZZ",
     "categories repeat",
+    "instruments must include Cash",
+    "an instrument has no name",
+    "instruments repeat",
   ]);
+  const { instruments, ...unlabelled } = trip;
+  assert.deepEqual(tripProblems(unlabelled), ["instruments must include Cash"]);
   assert.deepEqual(tripProblems({ ...trip, members: [] }), ["add at least one member"]);
   assert.throws(() => report({ ...trip, members: [] }, []), /at least one member/);
 });
@@ -226,8 +235,31 @@ test("bad entries are reported, not counted", () => {
   assert.equal(byMember(result, "paid").asha, "30.00");
 });
 
+test("every payment says what it was paid with, from the trip's instruments", () => {
+  const result = report(trip, [
+    expense("unsaid", { via: undefined, paid: { asha: "30" } }),
+    expense("card", { via: "Card", paid: { asha: "30" } }),
+    event("hand", { kind: "transfer", currency: "INR", from: { asha: "5" }, to: { bala: "5" } }),
+    event("atm", { kind: "exchange", gave: { currency: "INR", by: { asha: "100" } }, got: { currency: "USD", via: "Cash", by: { asha: "1" } } }),
+  ]);
+  assert.deepEqual(result.problems, [
+    { entry: "unsaid", message: "say what it was paid with" },
+    { entry: "card", message: "unknown instrument: Card" },
+    { entry: "hand", message: "say what it was paid with" },
+    { entry: "atm", message: "say what it was paid with" },
+  ]);
+});
+
+test("the instrument decides cash in hand, never who paid or what anyone owes", () => {
+  const dinner = (via) => expense("dinner", { currency: "VND", via, paid: { asha: "90000" } });
+  const [cash, online] = [report(trip, [dinner("Cash")]), report(trip, [dinner("Online")])];
+  assert.deepEqual(cash.members, online.members);
+  assert.deepEqual(cash.wallets, [{ member: "asha", currency: "VND", expected: "-90000" }]);
+  assert.deepEqual(online.wallets, []);
+});
+
 test("a draft previews its shares or its problem", () => {
-  const draft = { entry: "d", kind: "expense", date: "2026-01-01", currency: "INR", category: "Food" };
+  const draft = { entry: "d", kind: "expense", date: "2026-01-01", currency: "INR", category: "Food", via: "Online" };
   assert.deepEqual(preview(trip, { ...draft, paid: { asha: "10" }, split: { mode: "equal", members: ["asha", "bala"] } }), {
     problem: null,
     shares: [{ member: "asha", amount: "5.00" }, { member: "bala", amount: "5.00" }],
@@ -245,4 +277,7 @@ test("totals, versions, and what entries use", () => {
   assert.deepEqual([...used.members].sort(), ["bala", "chitra"]);
   assert.deepEqual([...used.categories], ["Food"]);
   assert.deepEqual([...used.currencies], ["INR"]);
+  assert.deepEqual([...used.instruments], ["Online"]);
+  const atm = event("atm", { kind: "exchange", gave: { currency: "INR", via: "Online", by: { asha: "100" } }, got: { currency: "USD", via: "Cash", by: { asha: "1" } } });
+  assert.deepEqual([...uses([atm]).instruments].sort(), ["Cash", "Online"]);
 });
