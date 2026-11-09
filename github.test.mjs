@@ -10,7 +10,7 @@ function github() {
     const path = new URL(url).pathname.replace("/repos/o/r", "");
     const reply = (status, value) => ({ ok: status < 300, status, statusText: "", json: async () => value });
     if (path === "") return reply(200, { default_branch: "main" });
-    if (path === "/git/trees/main") return reply(200, { tree: [...blobs.keys()].map((sha) => ({ type: "blob", path: `${sha}.json`, sha })) });
+    if (path === "/git/trees/main") return reply(200, { tree: [...blobs.keys()].map((sha) => ({ type: "blob", path: `${sha}.json`, sha })), truncated: request.truncated });
     if (path.startsWith("/git/blobs/")) return reply(200, { content: blobs.get(path.slice(11)) });
     if (method === "PUT") {
       request.sent = JSON.parse(body);
@@ -38,6 +38,13 @@ test("a named author is written as both author and committer", async () => {
   await remote.write("x.json", "{}\n", "add", undefined, person);
   assert.deepEqual(request.sent.author, person);
   assert.deepEqual(request.sent.committer, person);
+});
+
+test("a listing GitHub cut short is refused, never taken as files deleted", async () => {
+  const request = github();
+  request.truncated = true;
+  const remote = createRemote({ repo: "o/r", token: "t0ken" }, request);
+  await assert.rejects(remote.files(), (error) => error instanceof RemoteError && error.status === 413);
 });
 
 test("failures carry the status", async () => {

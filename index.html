@@ -1041,10 +1041,13 @@ function syncBody() {
   if (link) {
     return card("Sync",
       h("p", {}, link.folder ? `With the folder ${link.folder}.` : `With ${link.repo}${link.who ? `, as ${link.who}` : ""}.`),
+      store.synced() && h("p", { className: "hint" }, `Matched it at ${when(store.synced())}.`),
       syncError && h("p", { className: "error" }, syncError),
       h("div", { className: "row" },
         needsAccess ? button("Allow access", allow, "primary") : button("Sync now", runSync),
-        link.repo && button("Share link", share),
+        link.repo && button("Share link", share)),
+      h("div", { className: "row" },
+        button("Reset this device", reset),
         h("span", { className: "grow" }),
         button("Disconnect", disconnect, "danger")),
       link.repo && h("p", { className: "hint" }, "The link holds the key to the trip repo.  Share it only with the group."));
@@ -1117,6 +1120,18 @@ async function disconnect() {
   render();
 }
 
+// Drops this device's copy of every trip and fetches the repo's again.
+function reset() {
+  if (syncing) return toast("Wait for the sync to finish");
+  const unsent = store.slugs().reduce((sum, s) => sum + store.pending(s), 0);
+  const loss = unsent ? `  ${unsent} unsent change${unsent === 1 ? "" : "s"} will be lost.` : "";
+  if (!confirm(`Clear this device and fetch every trip again from the repo?${loss}`)) return;
+  store.reset();
+  [slug, draft, form, editing, pristine] = [null, null, null, null, true];
+  render();
+  runSync();
+}
+
 async function share() {
   const url = shareUrl();
   try {
@@ -1166,6 +1181,7 @@ async function runSync() {
   const clean = saved();
   try {
     const { notices } = await sync(store, await remoteOf(store.link()));
+    store.setSynced(new Date().toISOString());
     syncError = "";
     needsAccess = false;
     if (notices.length) toast(notices.join("  "));
@@ -1183,11 +1199,14 @@ async function runSync() {
   paintStatus();
 }
 
-const snapshot = () => JSON.stringify([store.slugs(), slug && store.trip(slug), slug && store.events(slug).length]);
+const snapshot = () => JSON.stringify([store.slugs(), slug && store.trip(slug), slug && store.events(slug)]);
 
 // Something came from the repo.  Redraw, unless that would disturb what is being typed.
 function arrived(clean) {
-  if (!slug) slug = pick(store.opened());
+  if (!store.slugs().includes(slug)) {
+    [slug, form, editing, pristine] = [pick(store.opened()), null, null, true];
+    clean = true;
+  }
   const froze = Boolean(draft) && !draft.locked && Boolean(store.trip(slug)?.locked);
   if ((clean || froze) && slug) draft = store.trip(slug);
   if (froze) {

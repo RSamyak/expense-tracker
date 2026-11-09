@@ -25,7 +25,7 @@ Lock a trip in Settings to stop edits on every device.  Unlock it the same way. 
 - `store.js`: what a device keeps.
 - `github.js`: the private repo, through GitHub's API.
 - `folder.js`: a folder on disk, with the same three methods.
-- `sync.js`: merges the two.
+- `sync.js`: keeps the device a copy of the repo, plus what it has not sent.  It only adds files, so it never overwrites the repo.
 - `index.html`: the app.  `sw.js` lets it open offline.
 
 Data repo layout: `<trip>/trip.json` and `<trip>/events/<time>-<entry>.json`, one file per version of an entry.

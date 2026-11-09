@@ -24,16 +24,18 @@ export function createRemote({ repo, token }, request = fetch) {
 
   let branch;
   return {
-    // Every file in the repo, as path → content sha.
+    // Every file in the repo, as path → content sha.  A partial list would read as files deleted, so it fails.
     async files() {
       branch ??= (await api("")).default_branch;
+      let listing;
       try {
-        const { tree } = await api(`/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-        return new Map(tree.filter(({ type }) => type === "blob").map(({ path, sha }) => [path, sha]));
+        listing = await api(`/git/trees/${encodeURIComponent(branch)}?recursive=1`);
       } catch (error) {
         if (error.status === 409) return new Map();
         throw error;
       }
+      if (listing.truncated) throw new RemoteError(413, "The repo is too big to list in one go.");
+      return new Map(listing.tree.filter(({ type }) => type === "blob").map(({ path, sha }) => [path, sha]));
     },
     async read(sha) {
       return decode((await api(`/git/blobs/${sha}`)).content);

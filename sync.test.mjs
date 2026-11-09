@@ -29,6 +29,10 @@ function repo() {
       return files.get(path).sha;
     },
     paths: () => [...files.keys()].sort(),
+    text: (path) => files.get(path).text,
+    // Changes made in the repo by hand, outside any device.
+    edit: (path, text) => files.set(path, { sha: `sha${version++}`, text }),
+    remove: (path) => files.delete(path),
   };
 }
 
@@ -103,4 +107,89 @@ test("when settings clash, the repo's copy is kept and said so", async () => {
   assert.equal(notices.length, 1);
   assert.equal(two.trip("2026-thailand").name, "Thailand trip");
   assert.equal(two.pending("2026-thailand"), 0);
+});
+
+const X = "2026-thailand/events/2026-12-14T10-00-00-000Z-x.json";
+const pretty = (value) => `${JSON.stringify(value, null, 2)}\n`;
+
+async function synced() {
+  const remote = repo();
+  const phone = createStore(memory());
+  phone.saveTrip("2026-thailand", trip);
+  phone.addEvents("2026-thailand", [event("x", "2026-12-14T10:00:00.000Z")]);
+  await sync(phone, remote);
+  return { remote, phone };
+}
+
+test("an entry changed in the repo is changed here, and the repo keeps it", async () => {
+  const { remote, phone } = await synced();
+  const fixed = pretty({ ...event("x", "2026-12-14T10:00:00.000Z"), via: "Online" });
+  remote.edit(X, fixed);
+  assert.deepEqual(await sync(phone, remote), { pulled: 1, pushed: 0, notices: [] });
+  assert.equal(phone.events("2026-thailand").length, 1);
+  assert.equal(phone.events("2026-thailand")[0].via, "Online");
+  assert.equal(remote.text(X), fixed);
+});
+
+test("an entry removed from the repo is removed here, and never sent back", async () => {
+  const { remote, phone } = await synced();
+  remote.remove(X);
+  assert.deepEqual(await sync(phone, remote), { pulled: 1, pushed: 0, notices: [] });
+  assert.deepEqual(phone.events("2026-thailand"), []);
+  assert.deepEqual(await sync(phone, remote), { pulled: 0, pushed: 0, notices: [] });
+  assert.deepEqual(remote.paths(), ["2026-thailand/trip.json"]);
+});
+
+test("an entry the repo already holds is never replaced from here", async () => {
+  const { remote } = await synced();
+  const theirs = remote.text(X);
+  const stale = createStore(memory());
+  stale.saveTrip("2026-thailand", trip);
+  stale.addEvents("2026-thailand", [{ ...event("x", "2026-12-14T10:00:00.000Z"), paid: { a: "99" } }]);
+  await sync(stale, remote);
+  assert.equal(remote.text(X), theirs);
+  assert.deepEqual(stale.events("2026-thailand"), [JSON.parse(theirs)]);
+});
+
+test("a device from before shas catches up with the repo, and sends nothing stale", async () => {
+  const { remote } = await synced();
+  const tripSha = (await remote.files()).get("2026-thailand/trip.json");
+  const storage = memory();
+  const phone = createStore(storage);
+  phone.receiveTrip("2026-thailand", trip, tripSha);
+  // x was later edited in the repo, and y removed from it.
+  const [x, y] = [event("x", "2026-12-14T10:00:00.000Z"), event("y", "2026-12-14T10:00:01.000Z")];
+  phone.addEvents("2026-thailand", [x, y]);
+  storage.setItem("expense-tracker:1:sync:2026-thailand", JSON.stringify({ tripSha, tripDirty: false, pushed: [fileOf(x), fileOf(y)] }));
+  remote.edit(X, pretty({ ...x, via: "Online" }));
+
+  assert.deepEqual(await sync(phone, remote), { pulled: 2, pushed: 0, notices: [] });
+  assert.deepEqual(phone.events("2026-thailand"), [{ ...x, via: "Online" }]);
+  assert.equal(phone.pending("2026-thailand"), 0);
+  assert.deepEqual(remote.paths(), [X, "2026-thailand/trip.json"]);
+});
+
+test("a trip removed from the repo is removed here, and not made again", async () => {
+  const { remote, phone } = await synced();
+  phone.addEvents("2026-thailand", [event("y", "2026-12-14T10:00:01.000Z")]);
+  remote.remove(X);
+  remote.remove("2026-thailand/trip.json");
+  const { notices } = await sync(phone, remote);
+  assert.deepEqual(notices, ["Thailand is no longer in the repo, so it was removed here, with 1 unsent change"]);
+  assert.deepEqual(phone.slugs(), []);
+  assert.deepEqual(remote.paths(), []);
+});
+
+test("a reset device holds exactly what the repo holds", async () => {
+  const { remote, phone } = await synced();
+  phone.addEvents("2026-thailand", [event("y", "2026-12-14T10:00:01.000Z")]);
+  phone.saveTrip("2026-thailand", { ...trip, name: "Unsaved" });
+  phone.setLink({ repo: "o/r" });
+  phone.reset();
+  assert.deepEqual(phone.slugs(), []);
+  assert.deepEqual(phone.link(), { repo: "o/r" });
+  await sync(phone, remote);
+  assert.deepEqual(phone.trip("2026-thailand"), trip);
+  assert.deepEqual(phone.events("2026-thailand").map((e) => e.entry), ["x"]);
+  assert.equal(phone.pending("2026-thailand"), 0);
 });
