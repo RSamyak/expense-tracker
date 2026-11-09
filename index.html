@@ -985,7 +985,7 @@ function readiness(trip) {
     h("h2", {}, "Ready?"),
     problems.length
       ? h("div", { className: "state" }, h("ul", {}, problems.map((p) => h("li", {}, p))))
-      : h("p", { className: "state ok" }, "Ready for entries."));
+      : h("p", { className: saved() ? "state ok" : "state" }, saved() ? "Ready for entries." : "Ready once you save."));
 }
 
 function device() {
