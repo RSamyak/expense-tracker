@@ -258,10 +258,21 @@ test("the instrument decides cash in hand, never who paid or what anyone owes", 
   assert.deepEqual(online.wallets, []);
 });
 
-test("an expense is shared with whoever it was split to", () => {
+test("an expense is shared with whoever it was split to, and for how much", () => {
   const paid = { paid: { asha: "30" } };
-  assert.deepEqual(sharedWith(trip, expense("all", paid)).sort(), ["asha", "bala", "chitra"]);
-  assert.deepEqual(sharedWith(trip, expense("two", { ...paid, split: { mode: "equal", members: ["bala", "chitra"] } })).sort(), ["bala", "chitra"]);
+  assert.deepEqual(sharedWith(trip, expense("all", paid)), [
+    { member: "asha", amount: "10.00" },
+    { member: "bala", amount: "10.00" },
+    { member: "chitra", amount: "10.00" },
+  ]);
+  assert.deepEqual(sharedWith(trip, expense("two", { ...paid, split: { mode: "equal", members: ["bala", "chitra"] } })), [
+    { member: "bala", amount: "15.00" },
+    { member: "chitra", amount: "15.00" },
+  ]);
+  const odd = sharedWith(trip, expense("odd", { paid: { asha: "10" } }));
+  assert.deepEqual(odd.map(({ member }) => member), ["asha", "bala", "chitra"]);
+  assert.equal(odd.reduce((sum, { amount }) => sum + Number(amount), 0).toFixed(2), "10.00");
+  assert.ok(odd.every(({ amount }) => amount !== "10.00"));
   assert.deepEqual(sharedWith(trip, event("move", { kind: "transfer", currency: "INR", via: "Online", from: { asha: "5" }, to: { bala: "5" } })), []);
   assert.deepEqual(sharedWith(trip, expense("bad", { paid: {} })), []);
 });

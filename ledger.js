@@ -347,12 +347,17 @@ function post(trip, entry) {
 
 // ---- Report --------------------------------------------------------------
 
-// Who an expense is split to.  A transfer, an exchange, and own cash are shared with nobody.
+// Who an expense is split to, and how much, in member order.  A transfer, an exchange, and own cash are shared with nobody.
 export function sharedWith(trip, entry) {
   try {
     if (entry.kind !== "expense") return [];
     const owed = shares(trip, entry.entry, money(trip, entry.paid, entry.currency).total, entry.currency, entry.split);
-    return owed.filter(([, amount]) => amount).map(([id]) => id);
+    const digits = decimals(entry.currency);
+    const order = ids(trip);
+    return owed
+      .filter(([, amount]) => amount)
+      .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
+      .map(([id, amount]) => ({ member: id, amount: decimal(amount, digits) }));
   } catch (error) {
     if (error instanceof LedgerError) return [];
     throw error;
@@ -364,17 +369,7 @@ export function preview(trip, entry) {
   try {
     checkTrip(trip);
     post(trip, entry);
-    if (entry.kind !== "expense") return { problem: null, shares: [] };
-    const owed = shares(trip, entry.entry, money(trip, entry.paid, entry.currency).total, entry.currency, entry.split);
-    const digits = decimals(entry.currency);
-    const order = ids(trip);
-    return {
-      problem: null,
-      shares: owed
-        .filter(([, n]) => n)
-        .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
-        .map(([id, n]) => ({ member: id, amount: decimal(n, digits) })),
-    };
+    return { problem: null, shares: sharedWith(trip, entry) };
   } catch (error) {
     if (!(error instanceof LedgerError)) throw error;
     return { problem: error.message, shares: [] };

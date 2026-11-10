@@ -69,7 +69,6 @@ input.amount.big { max-width: none; font-size: 26px; font-weight: 700; padding: 
 .btn.danger { color: var(--red); }
 .btn.wide { width: 100%; min-height: 48px; font-size: 17px; }
 .btn.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--navy); font-size: 14px; justify-self: start; }
-button.quiet { border: 0; background: none; padding: 0; min-height: 0; color: var(--grey); font-size: 13px; font-weight: 600; }
 .btn.x { min-width: 40px; padding: 0; color: var(--grey); font-size: 20px; line-height: 1; border-color: transparent; background: transparent; }
 .btn.x:hover { color: var(--red); background: var(--soft); }
 
@@ -83,6 +82,10 @@ button.chip.on { background: var(--navy); border-color: var(--navy); color: var(
 .seg button { flex: 1; min-width: 0; min-height: 38px; padding: 4px 2px; border: 0; background: none; font-size: 14px; font-weight: 700; color: var(--grey); }
 .seg button.on { background: var(--navy); color: var(--on); }
 .seg button:disabled:not(.on) { opacity: .45; }
+.seg.tiny { border: 0; border-radius: 8px; padding: 2px; }
+.seg.tiny button { flex: none; min-height: 0; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.seg.tiny button.on { background: var(--card); color: var(--ink); }
+.figure.head { align-items: center; }
 
 .preview { font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; }
 .preview:empty { display: none; }
@@ -318,10 +321,12 @@ const names = (map) => Object.keys(map ?? {}).map(nameOf).join(", ");
 const codes = () => [T.base, ...Object.keys(T.currencies)];
 
 // What a Book row says about an entry.
-function describe(entry) {
+function describe(entry, shares = []) {
   switch (entry.kind) {
-    case "expense":
-      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category, entry.via].filter(Boolean).join(" · "), sum: money(total(entry.paid, entry.currency) ?? 0, entry.currency) };
+    case "expense": {
+      const share = look.forWhom && shares.find(({ member }) => member === look.forWhom);
+      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category, entry.via].filter(Boolean).join(" · "), sum: money(share ? share.amount : total(entry.paid, entry.currency) ?? 0, entry.currency) };
+    }
     case "transfer":
       return { title: entry.description || "Transfer", detail: [`${names(entry.from)} → ${names(entry.to)}`, entry.via].filter(Boolean).join(" · "), sum: money(total(entry.from, entry.currency) ?? 0, entry.currency) };
     case "exchange": {
@@ -752,14 +757,14 @@ const look = { words: "", kind: "", paidBy: "", forWhom: "", category: "", curre
 // Who handed the money over.  Own cash was added, not paid.
 const payers = (entry) => Object.keys({ expense: entry.paid, transfer: entry.from, exchange: entry.gave?.by }[entry.kind] ?? {});
 
-function shown(entry) {
+function shown(entry, shares) {
   const used = uses([entry]);
-  const { title, detail } = describe(entry);
+  const { title, detail } = describe(entry, shares);
   const words = look.words.trim().toLowerCase();
   return (!look.kind || entry.kind === look.kind)
     && (!look.date || entry.date === look.date)
     && (!look.paidBy || payers(entry).includes(look.paidBy))
-    && (!look.forWhom || sharedWith(T, entry).includes(look.forWhom))
+    && (!look.forWhom || shares.some(({ member }) => member === look.forWhom))
     && (look.category === OTHER ? entry.kind === "expense" && !entry.category : !look.category || entry.category === look.category)
     && (!look.currency || used.currencies.has(look.currency))
     && (!look.via || used.instruments.has(look.via))
@@ -811,18 +816,23 @@ const hue = (category) => {
 
 function ledger() {
   const all = current(E);
-  const entries = all.filter(shown).reverse();
+  const entries = all
+    .map((entry) => ({ entry, shares: sharedWith(T, entry) }))
+    .filter((row) => shown(row.entry, row.shares))
+    .reverse();
   const count = entries.length < all.length && h("p", { className: "hint" }, `${entries.length} of ${all.length} entries`);
-  if (!entries.length) return [count, h("p", { className: "empty" }, "Nothing matches.")];
+  const shareNote = look.forWhom && h("p", { className: "hint" }, `Amounts are ${nameOf(look.forWhom)}'s share.`);
+  if (!entries.length) return [shareNote, count, h("p", { className: "empty" }, "Nothing matches.")];
   const problems = new Map(tripProblems(T).length ? [] : report(T, E).problems.map(({ entry, message }) => [entry, message]));
   const edited = new Set(E.filter((e, i) => E.findIndex((o) => o.entry === e.entry) !== i).map(({ entry }) => entry));
-  const days = Map.groupBy(entries, ({ date }) => date);
+  const days = Map.groupBy(entries, ({ entry }) => entry.date);
   return [
+    shareNote,
     count,
     ...[...days].map(([date, list]) => [
       h("p", { className: "day" }, day(date)),
-      h("div", { className: "entries" }, list.map((entry) => {
-        const { title, detail, sum } = describe(entry);
+      h("div", { className: "entries" }, list.map(({ entry, shares }) => {
+        const { title, detail, sum } = describe(entry, shares);
         const colour = entry.kind === "expense" && entry.category ? hue(entry.category) : "";
         return h("button", { type: "button", className: `entry k-${entry.kind}`, style: colour && `--kind: ${colour}`, onclick: () => openEntry(entry) },
           h("span", { className: "title" }, title), h("span", { className: "sum" }, sum),
@@ -838,10 +848,15 @@ function ledger() {
 // Earliest first until this device asks otherwise.  Remembered here, like the theme, and never in the repo.
 const ORDER = "expense-tracker:1:order:";
 const latestFirst = () => localStorage.getItem(ORDER) === "latest";
-function flipDays() {
-  if (latestFirst()) localStorage.removeItem(ORDER);
-  else localStorage.setItem(ORDER, "latest");
-  render();
+function dayOrder() {
+  const node = seg([["", "Earliest"], ["latest", "Latest"]], latestFirst() ? "latest" : "", (value) => {
+    if (value) localStorage.setItem(ORDER, "latest");
+    else localStorage.removeItem(ORDER);
+    render();
+  });
+  node.classList.add("tiny");
+  node.ariaLabel = "Day order";
+  return node;
 }
 
 
@@ -905,9 +920,7 @@ function balancesTab() {
   const busiest = Math.max(...days.map(([, value]) => value));
   const byDay = r.spend.length
     ? card(null,
-        h("div", { className: "figure" },
-          h("h2", {}, "By day"),
-          h("button", { type: "button", className: "quiet", onclick: flipDays }, latestFirst() ? "Earliest first" : "Latest first")),
+        h("div", { className: "figure head" }, h("h2", {}, "By day"), dayOrder()),
         choose([["", "All categories"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], dayCategory, (value) => ((dayCategory = value), render()), { ariaLabel: "Category" }),
         days.length
           ? h("div", { className: "list" }, ordered.map(([date, value, so]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ date, category: dayCategory }) },
