@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { apportion, convert, current, decimal, decimals, preview, report, settle, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { apportion, convert, current, decimal, decimals, preview, report, settle, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
 
 const trip = {
   schemaVersion: 1,
@@ -256,6 +256,14 @@ test("the instrument decides cash in hand, never who paid or what anyone owes", 
   assert.deepEqual(cash.members, online.members);
   assert.deepEqual(cash.wallets, [{ member: "asha", currency: "VND", expected: "-90000" }]);
   assert.deepEqual(online.wallets, []);
+});
+
+test("an expense is shared with whoever it was split to", () => {
+  const paid = { paid: { asha: "30" } };
+  assert.deepEqual(sharedWith(trip, expense("all", paid)).sort(), ["asha", "bala", "chitra"]);
+  assert.deepEqual(sharedWith(trip, expense("two", { ...paid, split: { mode: "equal", members: ["bala", "chitra"] } })).sort(), ["bala", "chitra"]);
+  assert.deepEqual(sharedWith(trip, event("move", { kind: "transfer", currency: "INR", via: "Online", from: { asha: "5" }, to: { bala: "5" } })), []);
+  assert.deepEqual(sharedWith(trip, expense("bad", { paid: {} })), []);
 });
 
 test("a draft previews its shares or its problem", () => {

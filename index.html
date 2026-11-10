@@ -12,11 +12,14 @@
   color-scheme: light;
   --paper: #fffdf6; --card: #fff; --ink: #2b2b2b; --grey: #6b6b6b; --faint: #b3ad9e; --line: #e6e2d6; --soft: #f4f1e8;
   --navy: #17375e; --on: #fff; --red: #c5221f; --green: #22773b; --amber: #9a6700;
+  --cat-0: #3d6fd4; --cat-1: #7a4ec8; --cat-2: #c44b86; --cat-3: #d4652f; --cat-4: #c8962e; --cat-5: #1f8f8a; --cat-6: #3e8f55; --cat-7: #4540a8;
+  --plain: #8a8476; --move-transfer: #8d8678; --move-exchange: #a08b6e; --move-cash: #7d8794;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --paper: #1a1815; --card: #24211d; --ink: #ece7da; --grey: #a39d8f; --faint: #6f695d; --line: #38342d; --soft: #2e2a25;
   --navy: #8fb3e0; --on: #1a1815; --red: #f07b72; --green: #6cc287; --amber: #e0b34a;
+  --plain: #a39d8f; --move-transfer: #b3ac9e; --move-exchange: #c4b296; --move-cash: #a8b0bb;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
@@ -66,6 +69,7 @@ input.amount.big { max-width: none; font-size: 26px; font-weight: 700; padding: 
 .btn.danger { color: var(--red); }
 .btn.wide { width: 100%; min-height: 48px; font-size: 17px; }
 .btn.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--navy); font-size: 14px; justify-self: start; }
+button.quiet { border: 0; background: none; padding: 0; min-height: 0; color: var(--grey); font-size: 13px; font-weight: 600; }
 .btn.x { min-width: 40px; padding: 0; color: var(--grey); font-size: 20px; line-height: 1; border-color: transparent; background: transparent; }
 .btn.x:hover { color: var(--red); background: var(--soft); }
 
@@ -101,10 +105,10 @@ button.chip.on { background: var(--navy); border-color: var(--navy); color: var(
 .entries { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; text-align: left; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); border-left: 4px solid var(--kind, transparent); background: color-mix(in srgb, var(--kind, transparent) 14%, var(--card)); }
 .entry:first-child { border-top: 0; }
-.k-expense { --kind: var(--navy); }
-.k-transfer { --kind: var(--green); }
-.k-exchange { --kind: var(--amber); }
-.k-cash { --kind: #8a8476; }
+.k-expense { --kind: var(--plain); }
+.k-transfer { --kind: var(--move-transfer); }
+.k-exchange { --kind: var(--move-exchange); }
+.k-cash { --kind: var(--move-cash); }
 button.chip[class*="k-"]::before { content: ""; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--kind); box-shadow: 0 0 0 1.5px var(--card); }
 .picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
 span.chip.fixed { padding: 6px 12px; }
@@ -198,7 +202,7 @@ systemDark.addEventListener("change", paintTheme);
 </dialog>
 
 <script type="module">
-import { CASH, SCHEMA_VERSION, current, decimal, decimals, preview, report, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { CASH, SCHEMA_VERSION, current, decimal, decimals, preview, report, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
 import { createStore, isSlug, newId } from "./store.js";
 import { createRemote, RemoteError } from "./github.js";
 import { allowFolder, canPickFolder, createFolder, forgetFolder, pickFolder, savedFolder } from "./folder.js";
@@ -743,7 +747,10 @@ function addTab() {
 // ---- Book ----------------------------------------------------------------
 
 const OTHER = "\u0000";
-const look = { words: "", kind: "", member: "", category: "", currency: "", via: "", date: "" };
+const look = { words: "", kind: "", paidBy: "", forWhom: "", category: "", currency: "", via: "", date: "" };
+
+// Who handed the money over.  Own cash was added, not paid.
+const payers = (entry) => Object.keys({ expense: entry.paid, transfer: entry.from, exchange: entry.gave?.by }[entry.kind] ?? {});
 
 function shown(entry) {
   const used = uses([entry]);
@@ -751,7 +758,8 @@ function shown(entry) {
   const words = look.words.trim().toLowerCase();
   return (!look.kind || entry.kind === look.kind)
     && (!look.date || entry.date === look.date)
-    && (!look.member || used.members.has(look.member))
+    && (!look.paidBy || payers(entry).includes(look.paidBy))
+    && (!look.forWhom || sharedWith(T, entry).includes(look.forWhom))
     && (look.category === OTHER ? entry.kind === "expense" && !entry.category : !look.category || entry.category === look.category)
     && (!look.currency || used.currencies.has(look.currency))
     && (!look.via || used.instruments.has(look.via))
@@ -760,23 +768,26 @@ function shown(entry) {
 
 function bookTab() {
   if (!current(E).length) return [h("p", { className: "empty welcome" }, "No entries yet.")];
-  if (!T.members.some(({ id }) => id === look.member)) look.member = "";
+  if (!T.members.some(({ id }) => id === look.paidBy)) look.paidBy = "";
+  if (!T.members.some(({ id }) => id === look.forWhom)) look.forWhom = "";
   if (look.category !== OTHER && !T.categories.includes(look.category)) look.category = "";
   if (!codes().includes(look.currency)) look.currency = "";
   if (!T.instruments.includes(look.via)) look.via = "";
   const narrow = (key) => (value) => ((look[key] = value), paintBook());
+  const people = T.members.map(({ id, name }) => [id, name]);
   return [
     T.locked && h("p", { className: "hint" }, "Locked.  Tap an entry to read it; unlock in Settings to change it."),
     card(null,
       text(look.words, narrow("words"), { type: "search", placeholder: "Search", ariaLabel: "Search" }),
       h("div", { className: "chips" }, KINDS.map(([kind, label]) => {
         const node = chip(label, look.kind === kind, () => ((look.kind = look.kind === kind ? "" : kind), render()));
-        node.classList.add(`k-${kind}`);
+        if (kind !== "expense") node.classList.add(`k-${kind}`);
         return node;
       })),
       look.date && h("div", { className: "chips" }, chip(`${day(look.date)}  ×`, true, () => ((look.date = ""), render()))),
       h("div", { className: "picks" },
-        choose([["", "Person"], ...T.members.map(({ id, name }) => [id, name])], look.member, narrow("member"), { ariaLabel: "Person" }),
+        choose([["", "Paid by"], ...people], look.paidBy, narrow("paidBy"), { ariaLabel: "Paid by" }),
+        choose([["", "For"], ...people], look.forWhom, narrow("forWhom"), { ariaLabel: "For" }),
         choose([["", "Category"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], look.category, narrow("category"), { ariaLabel: "Category" }),
         choose([["", "Currency"], ...codes().map((c) => [c, c])], look.currency, narrow("currency"), { ariaLabel: "Currency" }),
         choose([["", "Paid with"], ...T.instruments.map((v) => [v, v])], look.via, narrow("via"), { ariaLabel: "Paid with" }))),
@@ -788,9 +799,15 @@ const paintBook = () => $("#ledger")?.replaceChildren(...ledger().flat(Infinity)
 
 // A spending row opens the book already narrowed to it, keeping the person and currency chosen there.
 function showInBook({ category = "", date = "" }) {
-  Object.assign(look, { words: "", kind: "expense", member: spender, category, currency: paidIn, via: "", date });
+  Object.assign(look, { words: "", kind: "expense", paidBy: "", forWhom: spender, category, currency: paidIn, via: "", date });
   location.hash = "#book";
 }
+
+// A category's colour is its place in the trip's list.  An expense without one stays plain.
+const hue = (category) => {
+  const place = T.categories.indexOf(category);
+  return place < 0 ? "var(--plain)" : `var(--cat-${place % 8})`;
+};
 
 function ledger() {
   const all = current(E);
@@ -806,7 +823,8 @@ function ledger() {
       h("p", { className: "day" }, day(date)),
       h("div", { className: "entries" }, list.map((entry) => {
         const { title, detail, sum } = describe(entry);
-        return h("button", { type: "button", className: `entry k-${entry.kind}`, onclick: () => openEntry(entry) },
+        const colour = entry.kind === "expense" && entry.category ? hue(entry.category) : "";
+        return h("button", { type: "button", className: `entry k-${entry.kind}`, style: colour && `--kind: ${colour}`, onclick: () => openEntry(entry) },
           h("span", { className: "title" }, title), h("span", { className: "sum" }, sum),
           h("span", { className: "detail" }, detail), h("span", { className: "tag" }, edited.has(entry.entry) ? "edited" : ""),
           problems.has(entry.entry) && h("span", { className: "problem" }, problems.get(entry.entry)));
@@ -816,6 +834,17 @@ function ledger() {
 }
 
 // ---- Balances ------------------------------------------------------------
+
+// Earliest first until this device asks otherwise.  Remembered here, like the theme, and never in the repo.
+const ORDER = "expense-tracker:1:order:";
+const latestFirst = () => localStorage.getItem(ORDER) === "latest";
+function flipDays() {
+  if (latestFirst()) localStorage.removeItem(ORDER);
+  else localStorage.setItem(ORDER, "latest");
+  render();
+}
+
+
 
 function balancesTab() {
   const list = codes();
@@ -859,11 +888,12 @@ function balancesTab() {
           h("div", { className: "figure total" }, h("span", {}, "Total"), h("b", {}, money(rows.reduce((a, [, value]) => a + value, 0), r.currency))),
           h("div", { className: "list" }, rows.map(([c, value]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ category: c || OTHER }) },
             h("div", { className: "figure" }, h("span", {}, c || "Other"), h("b", {}, money(value, r.currency))),
-            h("div", { className: "track" }, h("div", { style: `width: ${(100 * value) / top}%` }))))),
+            h("div", { className: "track" }, h("div", { style: `width: ${(100 * value) / top}%; background: ${hue(c)}` }))))),
         ]
       : h("p", { className: "empty" }, "Nothing spent yet."));
 
-  // The same spending, a row per day with spending, earliest first, with what had been spent by then.
+  // The same spending, a row per day, with what had been spent by then.  The total is counted from the
+  // first day, and the rows are then shown earliest or latest first.
   if (dayCategory !== OTHER && !T.categories.includes(dayCategory)) dayCategory = "";
   const inCategory = ({ category }) => !dayCategory || (dayCategory === OTHER ? !category : category === dayCategory);
   let running = 0;
@@ -871,12 +901,16 @@ function balancesTab() {
     .filter(([, value]) => value)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, value]) => [date, value, (running += value)]);
+  const ordered = latestFirst() ? [...days].reverse() : days;
   const busiest = Math.max(...days.map(([, value]) => value));
   const byDay = r.spend.length
-    ? card("By day",
+    ? card(null,
+        h("div", { className: "figure" },
+          h("h2", {}, "By day"),
+          h("button", { type: "button", className: "quiet", onclick: flipDays }, latestFirst() ? "Earliest first" : "Latest first")),
         choose([["", "All categories"], ...T.categories.map((c) => [c, c]), [OTHER, "Other"]], dayCategory, (value) => ((dayCategory = value), render()), { ariaLabel: "Category" }),
         days.length
-          ? h("div", { className: "list" }, days.map(([date, value, so]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ date, category: dayCategory }) },
+          ? h("div", { className: "list" }, ordered.map(([date, value, so]) => h("button", { type: "button", className: "bar", onclick: () => showInBook({ date, category: dayCategory }) },
               h("div", { className: "figure" }, h("span", {}, day(date)), h("b", {}, money(value, r.currency))),
               h("div", { className: "track" }, h("div", { style: `width: ${(100 * value) / busiest}%` })),
               h("span", { className: "hint" }, `${money(so, r.currency)} so far`))))

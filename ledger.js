@@ -347,6 +347,18 @@ function post(trip, entry) {
 
 // ---- Report --------------------------------------------------------------
 
+// Who an expense is split to.  A transfer, an exchange, and own cash are shared with nobody.
+export function sharedWith(trip, entry) {
+  try {
+    if (entry.kind !== "expense") return [];
+    const owed = shares(trip, entry.entry, money(trip, entry.paid, entry.currency).total, entry.currency, entry.split);
+    return owed.filter(([, amount]) => amount).map(([id]) => id);
+  } catch (error) {
+    if (error instanceof LedgerError) return [];
+    throw error;
+  }
+}
+
 // What a draft entry would do, before it is saved: its problem, or each member's share.
 export function preview(trip, entry) {
   try {
