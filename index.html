@@ -86,6 +86,7 @@ button.chip.on { background: var(--navy); border-color: var(--navy); color: var(
 .seg.tiny button { flex: none; min-height: 0; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
 .seg.tiny button.on { background: var(--card); color: var(--ink); }
 .figure.head { align-items: center; }
+.book-money { display: flex; justify-content: flex-end; }
 
 .preview { font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; }
 .preview:empty { display: none; }
@@ -205,7 +206,7 @@ systemDark.addEventListener("change", paintTheme);
 </dialog>
 
 <script type="module">
-import { CASH, SCHEMA_VERSION, current, decimal, decimals, preview, report, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { CASH, SCHEMA_VERSION, current, decimal, decimals, inBase, preview, report, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
 import { createStore, isSlug, newId } from "./store.js";
 import { createRemote, RemoteError } from "./github.js";
 import { allowFolder, canPickFolder, createFolder, forgetFolder, pickFolder, savedFolder } from "./folder.js";
@@ -320,21 +321,45 @@ const nameOf = (id) => T?.members.find((m) => m.id === id)?.name ?? id;
 const names = (map) => Object.keys(map ?? {}).map(nameOf).join(", ");
 const codes = () => [T.base, ...Object.keys(T.currencies)];
 
+// Original currency until this device asks for the base.  Remembered here, like the day order.
+const BOOK_MONEY = "expense-tracker:1:book-money:";
+const bookInBase = () => localStorage.getItem(BOOK_MONEY) === "base";
+function bookMoney() {
+  const node = seg([["", "Original"], ["base", T.base]], bookInBase() ? "base" : "", (value) => {
+    if (value) localStorage.setItem(BOOK_MONEY, "base");
+    else localStorage.removeItem(BOOK_MONEY);
+    paintBook();
+  });
+  node.classList.add("tiny");
+  node.ariaLabel = "Amount currency";
+  return node;
+}
+
+// The figure on a Book row, in the entry's currency, or in the base when this device asks.
+// Every part of one entry is converted together, so the one shown still belongs to the whole.
+function figure(amounts, currency, rate, index = 0) {
+  const shown = amounts[index];
+  if (!bookInBase() || !currency || currency === T.base) return money(shown, currency);
+  const converted = inBase(T, amounts, currency, rate);
+  return money(converted ? converted[index] : shown, converted ? T.base : currency);
+}
+
 // What a Book row says about an entry.
 function describe(entry, shares = []) {
   switch (entry.kind) {
     case "expense": {
-      const share = look.forWhom && shares.find(({ member }) => member === look.forWhom);
-      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category, entry.via].filter(Boolean).join(" · "), sum: money(share ? share.amount : total(entry.paid, entry.currency) ?? 0, entry.currency) };
+      const share = look.forWhom ? shares.findIndex(({ member }) => member === look.forWhom) : -1;
+      const amounts = share >= 0 ? shares.map(({ amount }) => amount) : [total(entry.paid, entry.currency) ?? 0];
+      return { title: entry.description || "Expense", detail: [`${names(entry.paid)} paid`, entry.category, entry.via].filter(Boolean).join(" · "), sum: figure(amounts, entry.currency, entry.rate, share >= 0 ? share : 0) };
     }
     case "transfer":
-      return { title: entry.description || "Transfer", detail: [`${names(entry.from)} → ${names(entry.to)}`, entry.via].filter(Boolean).join(" · "), sum: money(total(entry.from, entry.currency) ?? 0, entry.currency) };
+      return { title: entry.description || "Transfer", detail: [`${names(entry.from)} → ${names(entry.to)}`, entry.via].filter(Boolean).join(" · "), sum: figure([total(entry.from, entry.currency) ?? 0], entry.currency) };
     case "exchange": {
       const side = ({ currency, by }) => money(total(by, currency) ?? 0, currency);
-      return { title: entry.description || "Exchange", detail: `${names(entry.gave?.by)}: ${side(entry.gave)} → ${side(entry.got)}`, sum: side(entry.got) };
+      return { title: entry.description || "Exchange", detail: `${names(entry.gave?.by)}: ${side(entry.gave)} → ${side(entry.got)}`, sum: figure([total(entry.got?.by, entry.got?.currency) ?? 0], entry.got?.currency) };
     }
     case "cash":
-      return { title: entry.description || "Own cash", detail: `${nameOf(entry.member)} added, not shared`, sum: money(entry.amount, entry.currency) };
+      return { title: entry.description || "Own cash", detail: `${nameOf(entry.member)} added, not shared`, sum: figure([entry.amount], entry.currency) };
     default:
       return { title: entry.kind, detail: "", sum: "" };
   }
@@ -822,11 +847,13 @@ function ledger() {
     .reverse();
   const count = entries.length < all.length && h("p", { className: "hint" }, `${entries.length} of ${all.length} entries`);
   const shareNote = look.forWhom && h("p", { className: "hint" }, `Amounts are ${nameOf(look.forWhom)}'s share.`);
-  if (!entries.length) return [shareNote, count, h("p", { className: "empty" }, "Nothing matches.")];
+  const moneyRow = codes().length > 1 && h("div", { className: "book-money" }, bookMoney());
+  if (!entries.length) return [moneyRow, shareNote, count, h("p", { className: "empty" }, "Nothing matches.")];
   const problems = new Map(tripProblems(T).length ? [] : report(T, E).problems.map(({ entry, message }) => [entry, message]));
   const edited = new Set(E.filter((e, i) => E.findIndex((o) => o.entry === e.entry) !== i).map(({ entry }) => entry));
   const days = Map.groupBy(entries, ({ entry }) => entry.date);
   return [
+    moneyRow,
     shareNote,
     count,
     ...[...days].map(([date, list]) => [

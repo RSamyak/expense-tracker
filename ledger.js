@@ -160,6 +160,20 @@ function money(trip, map, currency) {
   return { entries, total };
 }
 
+// Amounts in `currency` as the same amounts in the base currency, converted together so they still add up.
+// `override` is an entry's own rate.  Null when the rate cannot be used.
+export function inBase(trip, amounts, currency, override) {
+  try {
+    const [quote, base] = rate(trip, currency, override);
+    const values = convert(amounts.map((amount) => units(amount, decimals(currency))), [base, quote]);
+    const digits = decimals(trip.base);
+    return values.map((n) => decimal(n, digits));
+  } catch (error) {
+    if (error instanceof LedgerError) return null;
+    throw error;
+  }
+}
+
 // What a map of member amounts adds up to, or null if any amount is not one.
 export function total(map, currency) {
   try {

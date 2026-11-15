@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { apportion, convert, current, decimal, decimals, preview, report, settle, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { apportion, convert, current, decimal, decimals, inBase, preview, report, settle, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
 
 const trip = {
   schemaVersion: 1,
@@ -256,6 +256,15 @@ test("the instrument decides cash in hand, never who paid or what anyone owes", 
   assert.deepEqual(cash.members, online.members);
   assert.deepEqual(cash.wallets, [{ member: "asha", currency: "VND", expected: "-90000" }]);
   assert.deepEqual(online.wallets, []);
+});
+
+test("an amount in another currency converts to the base, and the parts still add up", () => {
+  assert.deepEqual(inBase(trip, ["10"], "USD"), ["842.50"]);
+  assert.deepEqual(inBase(trip, ["10"], "INR"), ["10.00"]);
+  const parts = sharedWith(trip, expense("odd-usd", { currency: "USD", paid: { asha: "10" } })).map(({ amount }) => amount);
+  const base = inBase(trip, parts, "USD");
+  assert.equal(base.reduce((sum, amount) => sum + Number(amount), 0).toFixed(2), "842.50");
+  assert.equal(inBase(trip, ["10"], "USD", ["nope"]), null);
 });
 
 test("an expense is shared with whoever it was split to, and for how much", () => {
