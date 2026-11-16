@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { apportion, convert, current, decimal, decimals, inBase, preview, report, settle, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { apportion, convert, current, decimal, decimals, inBase, preview, report, settle, sharedWith, total, tripProblems, units, uses, versions, weigh } from "./ledger.js";
 
 const trip = {
   schemaVersion: 1,
@@ -70,6 +70,22 @@ test("every split mode", () => {
   assert.equal(chitra, "46.67");
   assert.match(split({ mode: "percent", percents: { asha: 50 } }).problems[0].message, /total 100/);
   assert.match(split({ mode: "exact", amounts: { asha: "10" } }).problems[0].message, /total the amount/);
+});
+
+test("item prices are weights against the amount paid", () => {
+  const baht = weigh("30", 2, ["600", "400"]);
+  assert.equal(baht.total, "1000.000000");
+  assert.equal(baht.same, false);
+  assert.deepEqual(baht.shares.map((n) => decimal(n, 2)), ["18.00", "12.00"]);
+  const matching = weigh("30.00", 2, ["20", "10"]);
+  assert.equal(matching.same, true);
+  assert.deepEqual(matching.shares.map((n) => decimal(n, 2)), ["20.00", "10.00"]);
+  assert.equal(weigh("30", 0, ["20", "10"]).same, true);
+  assert.equal(weigh("30", 2, ["10.5", "19.5"]).same, true);
+  assert.deepEqual(weigh("10.01", 2, ["1", "1"]).shares.map((n) => decimal(n, 2)), ["5.01", "5.00"]);
+  assert.deepEqual(weigh("30", 2, ["600", "", "400"]).shares.map((n) => decimal(n, 2)), ["18.00", "0.00", "12.00"]);
+  assert.equal(weigh("30", 2, ["", ""]), null);
+  assert.equal(weigh("nope", 2, ["10"]), null);
 });
 
 test("expenses balance, personal spend moves nothing, and nets sum to zero", () => {

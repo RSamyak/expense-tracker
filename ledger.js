@@ -185,6 +185,28 @@ export function total(map, currency) {
   }
 }
 
+// Item amounts are weights.  `paid` is the amount paid, with `digits` decimal places.
+// `total` sums the weights, at six decimal places.  `same` means that sum equals `paid`.
+// `shares` is each amount's part of `paid`, in minor units.  A blank amount weighs nothing.
+// Null when an amount cannot be read, or the weights cannot share `paid`.
+export function weigh(paid, digits, amounts) {
+  try {
+    const weights = amounts.map((amount) => {
+      const text = String(amount ?? "").trim();
+      return text ? units(text, WEIGHT_PLACES) : 0n;
+    });
+    const whole = sum(weights);
+    if (whole <= 0n || weights.some((weight) => weight < 0n)) return null;
+    const paidUnits = units(paid, digits);
+    const places = Math.max(digits, WEIGHT_PLACES);
+    const same = paidUnits * 10n ** BigInt(places - digits) === whole * 10n ** BigInt(places - WEIGHT_PLACES);
+    return { total: decimal(whole, WEIGHT_PLACES), same, shares: paidUnits > 0n ? apportion(paidUnits, weights) : null };
+  } catch (error) {
+    if (error instanceof LedgerError || error instanceof RangeError) return null;
+    throw error;
+  }
+}
+
 // ---- Splits --------------------------------------------------------------
 
 // Who gets the odd unit rotates with the entry, so nobody is always favoured,

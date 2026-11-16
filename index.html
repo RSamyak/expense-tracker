@@ -101,6 +101,7 @@ button.chip.on { background: var(--navy); border-color: var(--navy); color: var(
 .state li { color: var(--red); }
 .state ul { margin: 0; padding-left: 18px; }
 .hint { font-size: 13px; color: var(--grey); }
+.share { color: var(--grey); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .error { color: var(--red); font-size: 14px; }
 .welcome { text-align: center; padding: 32px 16px 8px; display: grid; gap: 14px; justify-items: center; }
 .welcome p { color: var(--grey); }
@@ -206,7 +207,7 @@ systemDark.addEventListener("change", paintTheme);
 </dialog>
 
 <script type="module">
-import { CASH, SCHEMA_VERSION, current, decimal, decimals, inBase, preview, report, sharedWith, total, tripProblems, units, uses, versions } from "./ledger.js";
+import { CASH, SCHEMA_VERSION, current, decimal, decimals, inBase, preview, report, sharedWith, total, tripProblems, units, uses, versions, weigh } from "./ledger.js";
 import { createStore, isSlug, newId } from "./store.js";
 import { createRemote, RemoteError } from "./github.js";
 import { allowFolder, canPickFolder, createFolder, forgetFolder, pickFolder, savedFolder } from "./folder.js";
@@ -310,6 +311,7 @@ function toast(message) {
 // ---- Words ---------------------------------------------------------------
 
 const formats = new Map();
+const count = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 6 });
 function money(value, currency) {
   if (!formats.has(currency)) formats.set(currency, new Intl.NumberFormat("en-IN", { style: "currency", currency, currencyDisplay: "narrowSymbol" }));
   return formats.get(currency).format(Number(value));
@@ -513,6 +515,12 @@ function paintPreview() {
     sums.textContent = words;
     sums.classList.toggle("off", Boolean(off));
   }
+  const portions = form.split?.mode === "itemised" ? weigh(sumOf(form.paid, form.amount, form.currency), decimals(form.currency), form.split.items.map((item) => item.amount)) : null;
+  for (const node of document.querySelectorAll("[data-item]")) {
+    const i = Number(node.dataset.item);
+    const share = portions && !portions.same ? portions.shares?.[i] : null;
+    node.textContent = share != null && String(form.split.items[i].amount).trim() ? money(decimal(share, decimals(form.currency)), form.currency) : "";
+  }
   for (const node of document.querySelectorAll("[data-sum]")) node.value = { expense: () => sumOf(form.paid, form.amount, form.currency), transfer: () => transferAmount(form), gave: () => sumOf(form.gave.by, form.gave.amount, form.gave.currency), got: () => sumOf(form.got.by, form.got.amount, form.got.currency) }[node.dataset.sum]();
 }
 
@@ -576,11 +584,12 @@ function splitBody(f) {
       return perMember(s.amounts, f.currency);
     default:
       return [
+        h("p", { className: "hint" }, "Shared in proportion."),
         h("div", { className: "list" }, s.items.map((item, i) => h("div", { className: "list" },
           h("div", { className: "row" },
             h("span", { className: "grow hint" }, `Item ${i + 1}`),
             amount(item.amount, (v) => typed(() => (item.amount = v)), { ariaLabel: `Item ${i + 1} amount` }),
-            h("span", { className: "code" }, f.currency),
+            h("span", { className: "share", "data-item": i }),
             remove(`item ${i + 1}`, () => change(() => s.items.splice(i, 1)), s.items.length === 1)),
           toggles(item.members, (id) => change(() => flip(item.members, id)))))),
         button("Add item", () => change(() => s.items.push({ amount: "", members: [] })), "link"),
@@ -618,9 +627,8 @@ function tally(f) {
       return n === null ? null : [n ? `${cash(n)} ${n > 0n ? "left" : "over"}` : "Adds up", n !== 0n];
     }
     case "itemised": {
-      const n = leftOf(whole, s.items.map((item) => item.amount), digits);
-      if (n === null) return null;
-      return [n > 0n ? `${cash(n)} left, spread in proportion as tax and tip` : n < 0n ? `${cash(n)} over, taken off in proportion as a discount` : "Items add up to the amount", false];
+      const prices = weigh(whole, digits, s.items.map((item) => item.amount));
+      return prices ? [prices.same ? "Adds up" : `${count.format(Number(prices.total))} in all, shared in proportion.`, false] : null;
     }
     default:
       return null;
